@@ -10,6 +10,7 @@ import {
 import type { LongliveV2StateMessage } from "@reactor-models/longlive-v2";
 import { useWorldscore } from "../lib/store";
 import { CHUNK_MS, SCENE_MAX_CHUNKS, type Cue } from "../lib/world/score";
+import { confirmCommand } from "../lib/world/handshake";
 import { applyModifiers, composePrompt, MODIFIERS } from "../lib/world/spec";
 import { ScoreStrip } from "./ScoreStrip";
 
@@ -21,6 +22,8 @@ const BUDGET_PROMOTE_AT = SCENE_MAX_CHUNKS - 6;
 const BUDGET_FORCE_AT = SCENE_MAX_CHUNKS - 3;
 /** Absolute ceiling on a session, so a walked-away browser can't burn credits. */
 const MAX_SESSION_MS = 6 * 60 * 1000;
+/** How long to wait for the model to confirm the opening shot before `start`. */
+const HANDSHAKE_MS = 20_000;
 
 export function Player() {
   const { status, connect, disconnect, setShot, sceneCut, start } = useLongliveV2();
@@ -44,11 +47,22 @@ export function Player() {
   // this a cue in flight can be picked up a second time and fired twice.
   const firingRef = useRef<Set<string>>(new Set());
 
+  // The opener handshake polls for confirmation, so it needs the live snapshot
+  // rather than the one captured when the await began.
+  const snapshotRef = useRef<LongliveV2StateMessage | null>(null);
+
   useLongliveV2State((msg) => {
+    snapshotRef.current = msg;
     setSnapshot(msg);
     sceneChunkRef.current = msg.current_chunk ?? 0;
   });
-  useLongliveV2CommandError((msg) => setCommandError(`${msg.command}: ${msg.reason}`));
+  // First error wins: a rejected `set_shot` makes the following `start` fail
+  // too, and the second message is the one that explains least.
+  useLongliveV2CommandError((msg) => {
+    const text = `${msg.command}: ${msg.reason}`;
+    console.warn("[longlive] command_error", text);
+    setCommandError((existing) => existing ?? text);
+  });
 
   // Connect once. The ref guard matters because a double-invoked effect would
   // otherwise open two GPU sessions against a five-session account quota.
@@ -78,9 +92,22 @@ export function Player() {
 
     openerSentRef.current = true;
     void (async () => {
-      await setShot({ prompt: opener.prompt });
-      await start();
-      useWorldscore.getState().markFired(opener);
+      try {
+        // `start` is rejected unless the model already holds an opening shot,
+        // and `setShot` resolves when the bytes are sent rather than when the
+        // model has taken them — so wait for it to say so.
+        await confirmCommand(
+          () => setShot({ prompt: opener.prompt }),
+          () => snapshotRef.current,
+          (s) => s.has_prompt,
+          { what: "the opening shot", timeoutMs: HANDSHAKE_MS },
+        );
+
+        await start();
+        useWorldscore.getState().markFired(opener);
+      } catch (error) {
+        setCommandError((existing) => existing ?? (error as Error).message);
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, score]);

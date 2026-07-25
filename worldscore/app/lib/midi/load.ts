@@ -23,14 +23,22 @@ export async function loadMidi(file: File): Promise<LoadedMidi> {
   const buffer = await synthesize(score);
   const audioUrl = URL.createObjectURL(encodeWav(buffer));
 
+  // The audio keeps its reverb tail so it doesn't end abruptly, but analysis
+  // stops at the last note: everything after it is decay, not music.
+  const lastNoteEnd = score.notes.reduce((max, n) => Math.max(max, n.timeMs + n.durationMs), 0);
+
   const grid = harmonyGrid(score, TEXTURE_HZ);
-  const analysis = await analyzeAudioBuffer(buffer, {
-    chroma: grid.chroma,
-    pitch: grid.pitch,
-    bpm: score.bpm,
-    // MIDI time zero is the downbeat, so there is no phase to hunt for.
-    beatPhaseMs: 0,
-  });
+  const analysis = await analyzeAudioBuffer(
+    buffer,
+    {
+      chroma: grid.chroma,
+      pitch: grid.pitch,
+      bpm: score.bpm,
+      // MIDI time zero is the downbeat, so there is no phase to hunt for.
+      beatPhaseMs: 0,
+    },
+    lastNoteEnd,
+  );
 
   return { analysis, audioUrl, score };
 }

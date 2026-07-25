@@ -5,3 +5,7 @@ node_modules
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# Artifacts from scripts/check-midi-browser.mjs
+midi-render.wav
+midi-*.png

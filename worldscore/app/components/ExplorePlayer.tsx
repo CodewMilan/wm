@@ -17,6 +17,7 @@ import {
   type ExploreStep,
 } from "../lib/world/explore";
 import { describeWeather } from "../lib/world/climate";
+import { confirmCommand, waitForState } from "../lib/world/handshake";
 
 /**
  * Fire a step slightly early so the change lands on the beat we aimed at. The
@@ -38,6 +39,12 @@ const SETTLE_MS = 4_000;
  * tighter limit.
  */
 const MAX_SESSION_MS = 6 * 60 * 1000;
+/**
+ * How long to wait for the model to confirm one arming command. Generous: it
+ * covers a GPU still warming up, and the cost of waiting too long is a slower
+ * start, while the cost of not waiting is a session that never begins.
+ */
+const HANDSHAKE_MS = 20_000;
 
 const MOVE_KEYS: Record<string, Partial<CameraState>> = {
   KeyW: { moveLongitudinal: "forward" },
@@ -105,9 +112,21 @@ export function ExplorePlayer() {
   const [finished, setFinished] = useState(false);
   const [settled, setSettled] = useState(false);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The arming handshake polls for confirmation, and a captured state variable
+  // would hand it the snapshot from before the command was ever sent.
+  const snapshotRef = useRef<LingbotWorld2StateMessage | null>(null);
 
-  useLingbotWorld2State(setSnapshot);
-  useLingbotWorld2CommandError((msg) => setCommandError(`${msg.command}: ${msg.reason}`));
+  useLingbotWorld2State((msg) => {
+    snapshotRef.current = msg;
+    setSnapshot(msg);
+  });
+  // First error wins. A rejected `set_prompt` makes the following `start` fail
+  // too, and overwriting would leave only the second, less useful message.
+  useLingbotWorld2CommandError((msg) => {
+    const text = `${msg.command}: ${msg.reason}`;
+    console.warn("[lingbot] command_error", text);
+    setCommandError((existing) => existing ?? text);
+  });
   useLingbotWorld2ImageAccepted((msg) => setImageInfo({ width: msg.width, height: msg.height }));
 
   /** Push only the axes that actually changed. */
@@ -189,9 +208,25 @@ export function ExplorePlayer() {
         const blob = await res.blob();
         const ref = await uploadFile(blob, { name: `${seed.id}.jpg` });
 
+        // `start` is rejected unless the model already holds both an image and
+        // a prompt, and neither command reports back in line — so each one is
+        // confirmed against the model's own state before moving on.
         setArming("Anchoring the world");
-        await setImage({ image: ref });
-        await setPrompt({ prompt: opener.prompt });
+        await confirmCommand(
+          () => setImage({ image: ref }),
+          () => snapshotRef.current,
+          (s) => s.has_image,
+          { what: "the seed image", timeoutMs: HANDSHAKE_MS },
+        );
+
+        setArming("Handing over the prompt");
+        await confirmCommand(
+          () => setPrompt({ prompt: opener.prompt }),
+          () => snapshotRef.current,
+          (s) => s.has_prompt,
+          { what: "the opening prompt", timeoutMs: HANDSHAKE_MS },
+        );
+
         // Long sessions drift as the model's context accumulates; letting it
         // refresh back to the seed image on a timer is what keeps a five-minute
         // walk looking like the world it started in.
@@ -199,12 +234,19 @@ export function ExplorePlayer() {
 
         setArming("Waking the world up");
         await start();
+        await waitForState(
+          () => snapshotRef.current,
+          (s) => s.started,
+          { what: "generation starting", timeoutMs: HANDSHAKE_MS },
+        );
         // The camera is deliberately not sent here — input during the
         // materialising window is dropped, so the opening move is applied once
         // the world has settled instead.
         useWorldscore.getState().markStepFired(opener);
       } catch (error) {
-        setCommandError((error as Error).message);
+        // A rejection reported by the model explains more than our own timeout
+        // waiting on it, so it keeps precedence.
+        setCommandError((existing) => existing ?? (error as Error).message);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

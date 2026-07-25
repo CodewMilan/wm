@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useWorldscore } from "../lib/store";
-import { runDemoTrack, runPipeline } from "../lib/pipeline";
+import { runDemoMidi, runDemoTrack, runPipeline } from "../lib/pipeline";
 
 export function Upload() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -65,12 +65,21 @@ export function Upload() {
         />
       </div>
 
-      <button
-        onClick={() => void runDemoTrack()}
-        className="mt-4 font-mono text-[11px] text-zinc-600 underline underline-offset-4 transition-colors hover:text-zinc-400"
-      >
-        or run the built-in test track
-      </button>
+      <div className="mt-4 flex items-center gap-4 font-mono text-[11px] text-zinc-600">
+        <button
+          onClick={() => void runDemoTrack()}
+          className="underline underline-offset-4 transition-colors hover:text-zinc-400"
+        >
+          run the built-in test track
+        </button>
+        <span className="text-zinc-800">/</span>
+        <button
+          onClick={() => void runDemoMidi()}
+          className="underline underline-offset-4 transition-colors hover:text-zinc-400"
+        >
+          the MIDI one
+        </button>
+      </div>
 
       {error && (
         <p className="mt-4 font-mono text-xs text-red-400">{error}</p>

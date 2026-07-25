@@ -37,8 +37,21 @@ function toMonoAtTargetRate(buffer: AudioBuffer): Float32Array {
 export async function analyzeAudioBuffer(
   buffer: AudioBuffer,
   override?: AnalysisOverride,
+  /**
+   * Analyse only the first `limitMs`. Synthesised MIDI carries a reverb tail
+   * that is audible but not musical, and letting it through hands the structure
+   * detector a few seconds of decaying silence that it dutifully reports as a
+   * final section — one with no pitch in it, which the climate engine then has
+   * to invent a season for.
+   */
+  limitMs?: number,
 ): Promise<AudioAnalysis> {
-  const pcm = toMonoAtTargetRate(buffer);
+  const full = toMonoAtTargetRate(buffer);
+  const pcm =
+    limitMs && limitMs > 0
+      ? full.subarray(0, Math.min(full.length, Math.floor((limitMs / 1000) * TARGET_RATE)))
+      : full;
+
   return analyzeInWorker(pcm, override).catch(() => analyzePcm(pcm, TARGET_RATE, override));
 }
 

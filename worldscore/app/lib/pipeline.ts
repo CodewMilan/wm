@@ -19,6 +19,16 @@ export async function runDemoTrack(): Promise<void> {
 }
 
 /**
+ * The MIDI equivalent, which moves through minor and major and drops an octave
+ * in its breakdown — so the climate engine visibly does something.
+ */
+export async function runDemoMidi(): Promise<void> {
+  const res = await fetch("/demo-track.mid");
+  const blob = await res.blob();
+  await runPipeline(new File([blob], "Synthetic MIDI Score.mid", { type: "audio/midi" }));
+}
+
+/**
  * A MIDI file is a score with no sound in it, so there is nothing to play and
  * nothing to measure until we render it. Everything downstream then behaves
  * exactly as it does for an upload, except the harmony is exact rather than

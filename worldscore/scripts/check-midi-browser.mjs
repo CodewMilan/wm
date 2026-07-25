@@ -4,6 +4,7 @@
 //
 //   node scripts/check-midi-browser.mjs [url] [file]
 
+import { writeFileSync } from "node:fs";
 import { chromium } from "playwright";
 
 const url = process.argv[2] ?? "http://localhost:3100";
@@ -11,6 +12,18 @@ const file = process.argv[3] ?? "public/demo-track.mid";
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
+
+// The synthesised WAV never touches the network or the filesystem, so the only
+// way to get hold of it is to catch it on its way into a blob URL.
+await page.addInitScript(() => {
+  const original = URL.createObjectURL.bind(URL);
+  URL.createObjectURL = (obj) => {
+    if (obj instanceof Blob && obj.type === "audio/wav") {
+      window.__renderedWav = obj;
+    }
+    return original(obj);
+  };
+});
 
 const errors = [];
 page.on("console", (msg) => {
@@ -54,6 +67,50 @@ try {
   check("length matches the score", lengthSec > 150 && lengthSec < 200, `${lengthSec}s`);
 
   await page.screenshot({ path: "midi-analyzing.png", fullPage: true });
+
+  // Pull the rendered audio out and measure it. Every check so far would still
+  // pass on a buffer of near-silence or one clipped into distortion.
+  const wav = await page.evaluate(async () => {
+    const blob = window.__renderedWav;
+    if (!blob) return null;
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return { base64: btoa(binary), size: bytes.length };
+  });
+
+  if (!wav) {
+    check("rendered audio captured", false, "no audio/wav blob was created");
+  } else {
+    const buf = Buffer.from(wav.base64, "base64");
+    writeFileSync("midi-render.wav", buf);
+
+    const channels = buf.readUInt16LE(22);
+    const sampleRate = buf.readUInt32LE(24);
+    const frames = Math.floor((buf.length - 44) / 2 / channels);
+
+    let peak = 0;
+    let sumSquares = 0;
+    let clipped = 0;
+    for (let i = 0; i < frames * channels; i++) {
+      const s = buf.readInt16LE(44 + i * 2) / 32768;
+      const abs = Math.abs(s);
+      if (abs > peak) peak = abs;
+      if (abs > 0.999) clipped++;
+      sumSquares += s * s;
+    }
+    const rms = Math.sqrt(sumSquares / (frames * channels));
+
+    console.log(
+      `  audio: ${channels}ch ${sampleRate}Hz, ${(frames / sampleRate).toFixed(1)}s, ` +
+        `peak ${peak.toFixed(3)}, rms ${rms.toFixed(4)}, ${(buf.length / 1e6).toFixed(1)}MB`,
+    );
+    check("rendered audio is stereo at full rate", channels === 2 && sampleRate === 44100, `${channels}ch ${sampleRate}Hz`);
+    check("the render is audible, not silence", rms > 0.01, `rms ${rms.toFixed(4)}`);
+    check("the render is not clipping", clipped / (frames * channels) < 0.001, `${clipped} clipped samples`);
+    check("the render has headroom left", peak > 0.1 && peak <= 1, `peak ${peak.toFixed(3)}`);
+    console.log("  wrote midi-render.wav — listen to check it sounds musical");
+  }
 
   // Getting to the concept board proves the analysis survived the API round
   // trip. Falling back to the offline library still counts.
