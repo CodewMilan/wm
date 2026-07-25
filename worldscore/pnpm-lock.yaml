@@ -12,8 +12,8 @@ importers:
         specifier: ^0.3.3
         version: 0.3.3(hls.js@1.6.16)(react@19.2.7)(zustand@5.0.14(@types/react@19.2.16)(react@19.2.7))
       '@reactor-models/longlive-v2':
-        specifier: ^3.0.0
-        version: 3.0.4(hls.js@1.6.16)(react@19.2.7)(zustand@5.0.14(@types/react@19.2.16)(react@19.2.7))
+        specifier: ^3.0.12
+        version: 3.0.12(hls.js@1.6.16)(react@19.2.7)(zustand@5.0.14(@types/react@19.2.16)(react@19.2.7))
       '@reactor-team/js-sdk':
         specifier: ^2.12.0
         version: 2.12.0(hls.js@1.6.16)(react@19.2.7)(zustand@5.0.14(@types/react@19.2.16)(react@19.2.7))
@@ -279,8 +279,8 @@ packages:
     peerDependencies:
       react: '>=18'
 
-  '@reactor-models/longlive-v2@3.0.4':
-    resolution: {integrity: sha512-z+Ovc5vPzLVgfTlc3oXKOxa8Yvyd1zlNi4ixRpCN52W9of7i1xoQ9P0DM8V+b+J7O1CHb+AXtshNBc6wQNdDhQ==}
+  '@reactor-models/longlive-v2@3.0.12':
+    resolution: {integrity: sha512-kqDScCRyxOBFTvDNMWxkpD2KaYcPN0WTL9Y0wdmVcmpeZZlSg5StXajwJRldCplJYQuyXoeOLSkFw/YQ7ReDJw==}
     peerDependencies:
       react: '>=18'
 
@@ -825,7 +825,7 @@ snapshots:
       - supports-color
       - zustand
 
-  '@reactor-models/longlive-v2@3.0.4(hls.js@1.6.16)(react@19.2.7)(zustand@5.0.14(@types/react@19.2.16)(react@19.2.7))':
+  '@reactor-models/longlive-v2@3.0.12(hls.js@1.6.16)(react@19.2.7)(zustand@5.0.14(@types/react@19.2.16)(react@19.2.7))':
     dependencies:
       '@reactor-team/js-sdk': 2.12.0(hls.js@1.6.16)(react@19.2.7)(zustand@5.0.14(@types/react@19.2.16)(react@19.2.7))
       react: 19.2.7

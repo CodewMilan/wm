@@ -72,8 +72,10 @@ export async function decodeAndAnalyze(
   } catch {
     // The browser's own message here is a bare "Unable to decode audio data",
     // which tells nobody anything about which of the many causes it hit.
+    // Video containers reach here too: we only ever want their audio track, and
+    // a clip with no audio at all fails the same way a corrupt file does.
     throw new Error(
-      "This browser couldn't decode that audio. Try exporting it as WAV or MP3.",
+      "Couldn't read any audio out of that file. If it's a video, check it has an audio track — otherwise try exporting it as WAV or MP3.",
     );
   } finally {
     void context.close();

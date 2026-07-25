@@ -1,5 +1,1 @@
-{
-  "/api/concepts/route": "app/api/concepts/route.js",
-  "/api/reactor/token/route": "app/api/reactor/token/route.js",
-  "/page": "app/page.js"
-}
+{}

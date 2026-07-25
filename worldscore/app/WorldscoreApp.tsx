@@ -26,21 +26,35 @@ export function WorldscoreApp() {
   const phase = useWorldscore((s) => s.phase);
   const mode = useWorldscore((s) => s.mode);
 
-  // Both providers wrap the tree, but neither connects on mount — each player
-  // opens its own session when it renders. So only the mode actually in use
-  // ever reserves a GPU.
+  /**
+   * Exactly one provider is mounted, and only for the mode in play.
+   *
+   * This matters more than it looks: both model SDKs are built on the same
+   * `ReactorContext` from the base SDK, so nesting them does not give you two
+   * independent sessions — the inner one shadows the outer, and every hook
+   * resolves to it. With both mounted, `useLongliveV2()` in Watch mode was
+   * driving the LingBot session, which ignored `set_shot` and then rejected
+   * `start` with "No prompt set". Mounting one at a time keeps each player
+   * talking to its own model, and still reserves a GPU only when a session
+   * actually begins.
+   */
   return (
-    <LongliveV2Provider getJwt={fetchToken}>
-      <LingbotWorld2Provider getJwt={fetchToken}>
-        <main className="relative min-h-screen overflow-hidden">
-          <Backdrop />
-          {phase === "upload" && <Upload />}
-          {phase === "analyzing" && <Analyzing />}
-          {phase === "concepts" && <ConceptBoard />}
-          {phase === "session" && (mode === "watch" ? <Player /> : <ExplorePlayer />)}
-        </main>
-      </LingbotWorld2Provider>
-    </LongliveV2Provider>
+    <main className="relative min-h-screen overflow-hidden">
+      <Backdrop />
+      {phase === "upload" && <Upload />}
+      {phase === "analyzing" && <Analyzing />}
+      {phase === "concepts" && <ConceptBoard />}
+      {phase === "session" &&
+        (mode === "watch" ? (
+          <LongliveV2Provider getJwt={fetchToken}>
+            <Player />
+          </LongliveV2Provider>
+        ) : (
+          <LingbotWorld2Provider getJwt={fetchToken}>
+            <ExplorePlayer />
+          </LingbotWorld2Provider>
+        ))}
+    </main>
   );
 }
 

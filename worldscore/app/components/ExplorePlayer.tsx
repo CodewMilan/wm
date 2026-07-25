@@ -10,6 +10,7 @@ import {
   useLingbotWorld2ConditionsReady,
 } from "@reactor-models/lingbot-world-2";
 import type { LingbotWorld2StateMessage } from "@reactor-models/lingbot-world-2";
+import { formatTime } from "../lib/format";
 import { useWorldscore } from "../lib/store";
 import {
   CAMERA_STILL,
@@ -19,6 +20,7 @@ import {
 } from "../lib/world/explore";
 import { describeWeather } from "../lib/world/climate";
 import { confirmCommand, waitForState } from "../lib/world/handshake";
+import { Transport } from "./Transport";
 
 /**
  * Fire a step slightly early so the change lands on the beat we aimed at. The
@@ -91,7 +93,7 @@ export function ExplorePlayer() {
     setRotationSpeedDeg,
     start,
   } = useLingbotWorld2();
-  const { trackName, audioUrl, seed, exploreScore, reset } = useWorldscore();
+  const { trackName, audioUrl, seed, exploreScore, analysis, reset } = useWorldscore();
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const connectedRef = useRef(false);
@@ -441,6 +443,14 @@ export function ExplorePlayer() {
 
       <ExploreStrip positionMs={positionMs} />
 
+      <div className="flex items-center px-6 pb-6">
+        <Transport
+          mediaRef={audioRef}
+          positionMs={positionMs}
+          durationMs={analysis?.durationMs ?? 0}
+        />
+      </div>
+
       {commandError && (
         <p className="px-6 pb-6 font-mono text-[10px] text-red-400">{commandError}</p>
       )}
@@ -583,7 +593,3 @@ function FinishedOverlay({ onExit }: { onExit: () => void }) {
   );
 }
 
-function formatTime(ms: number): string {
-  const total = Math.floor(ms / 1000);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}

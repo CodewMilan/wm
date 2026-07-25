@@ -15,6 +15,7 @@ import { CHUNK_MS, SCENE_MAX_CHUNKS, type Cue } from "../lib/world/score";
 import { waitForState } from "../lib/world/handshake";
 import { applyModifiers, composePrompt, MODIFIERS } from "../lib/world/spec";
 import { ScoreStrip } from "./ScoreStrip";
+import { Transport } from "./Transport";
 
 /** Fire one chunk early so the transition activates on the boundary we want. */
 const LEAD_MS = CHUNK_MS;
@@ -37,7 +38,7 @@ const OPENER_ATTEMPTS = 3;
 
 export function Player() {
   const { status, connect, disconnect, setShot, sceneCut, start } = useLongliveV2();
-  const { trackName, audioUrl, direction, score, reset } = useWorldscore();
+  const { trackName, audioUrl, direction, score, analysis, reset } = useWorldscore();
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const connectedRef = useRef(false);
@@ -290,12 +291,19 @@ export function Player() {
 
       <ScoreStrip positionMs={positionMs} />
 
-      <div className="flex flex-wrap items-center gap-2 px-6 pb-6">
-        {MODIFIERS.map((mod) => (
-          <ModifierButton key={mod.id} id={mod.id} label={mod.label} onApply={setShot} />
-        ))}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-6 pb-6">
+        <div className="flex flex-wrap items-center gap-2">
+          {MODIFIERS.map((mod) => (
+            <ModifierButton key={mod.id} id={mod.id} label={mod.label} onApply={setShot} />
+          ))}
+        </div>
+        <Transport
+          mediaRef={audioRef}
+          positionMs={positionMs}
+          durationMs={analysis?.durationMs ?? 0}
+        />
         {commandError && (
-          <span className="ml-auto font-mono text-[10px] text-red-400">{commandError}</span>
+          <span className="w-full font-mono text-[10px] text-red-400">{commandError}</span>
         )}
       </div>
 

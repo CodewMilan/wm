@@ -9,3 +9,6 @@ node_modules
 # Artifacts from scripts/check-midi-browser.mjs
 midi-render.wav
 midi-*.png
+
+# isolated build dir used by live test servers
+.next-test

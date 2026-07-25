@@ -50,16 +50,19 @@ export function Upload() {
         }`}
       >
         <p className="text-sm text-zinc-300">
-          Drop a track or a MIDI file, or{" "}
+          Drop a track, a video or a MIDI file, or{" "}
           <span className="text-brand underline underline-offset-4">browse</span>
         </p>
         <p className="mt-2 font-mono text-[11px] text-zinc-600">
-          MP3 · WAV · M4A · FLAC · MID — analysed entirely in your browser
+          MP3 · WAV · M4A · FLAC · MID · MP4 — analysed entirely in your browser
+        </p>
+        <p className="mt-1 font-mono text-[11px] text-zinc-700">
+          Video files are used for their audio only
         </p>
         <input
           ref={inputRef}
           type="file"
-          accept="audio/*,.mid,.midi"
+          accept="audio/*,video/*,.mid,.midi"
           className="hidden"
           onChange={(e) => accept(e.target.files?.[0])}
         />

@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@reactor-models/lingbot-world-2": "^0.3.3",
-    "@reactor-models/longlive-v2": "^3.0.0",
+    "@reactor-models/longlive-v2": "^3.0.12",
     "@reactor-team/js-sdk": "^2.12.0",
     "@reactor-team/ui": "^1.4.1",
     "@tonejs/midi": "^2.0.28",
