@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useWorldscore } from "../lib/store";
-import { runPipeline } from "../lib/pipeline";
+import { runDemoTrack, runPipeline } from "../lib/pipeline";
 
 export function Upload() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +63,13 @@ export function Upload() {
           onChange={(e) => accept(e.target.files?.[0])}
         />
       </div>
+
+      <button
+        onClick={() => void runDemoTrack()}
+        className="mt-4 font-mono text-[11px] text-zinc-600 underline underline-offset-4 transition-colors hover:text-zinc-400"
+      >
+        or run the built-in test track
+      </button>
 
       {error && (
         <p className="mt-4 font-mono text-xs text-red-400">{error}</p>

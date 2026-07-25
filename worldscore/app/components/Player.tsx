@@ -37,7 +37,17 @@ export function Player() {
   const [positionMs, setPositionMs] = useState(0);
   const [finished, setFinished] = useState(false);
 
-  useLongliveV2State((msg) => setSnapshot(msg));
+  // The loop reads the scene budget from a ref rather than from state, so it
+  // isn't torn down and rebuilt on every chunk the model reports.
+  const sceneChunkRef = useRef(0);
+  // Cues handed to the model but not yet acknowledged in the store. Without
+  // this a cue in flight can be picked up a second time and fired twice.
+  const firingRef = useRef<Set<string>>(new Set());
+
+  useLongliveV2State((msg) => {
+    setSnapshot(msg);
+    sceneChunkRef.current = msg.current_chunk ?? 0;
+  });
   useLongliveV2CommandError((msg) => setCommandError(`${msg.command}: ${msg.reason}`));
 
   // Connect once. The ref guard matters because a double-invoked effect would
@@ -91,10 +101,9 @@ export function Player() {
     if (!snapshot?.started || status !== "ready" || !score) return;
 
     let raf = 0;
-    let inFlight = false;
 
     const fire = async (cue: Cue, forceCut: boolean) => {
-      inFlight = true;
+      firingRef.current.add(cue.id);
       const { modifiers, markFired } = useWorldscore.getState();
       const spec = applyModifiers(cue.spec, modifiers);
       const prompt = composePrompt(spec);
@@ -103,7 +112,7 @@ export function Player() {
         else await setShot({ prompt });
         markFired(forceCut && cue.kind !== "cut" ? { ...cue, kind: "cut" } : cue);
       } finally {
-        inFlight = false;
+        firingRef.current.delete(cue.id);
       }
     };
 
@@ -119,9 +128,9 @@ export function Player() {
         void disconnect();
         return;
       }
-      if (inFlight) return;
+      if (firingRef.current.size > 0) return;
 
-      const sceneChunk = snapshot.current_chunk ?? 0;
+      const sceneChunk = sceneChunkRef.current;
       const { firedCueIds } = useWorldscore.getState();
       const next = score.cues.find(
         (c) => !firedCueIds.includes(c.id) && c.atMs <= nowMs + LEAD_MS,
@@ -155,7 +164,7 @@ export function Player() {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot?.started, snapshot?.current_chunk, status, score]);
+  }, [snapshot?.started, status, score]);
 
   if (!direction || !score) return null;
 

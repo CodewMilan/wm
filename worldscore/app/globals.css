@@ -25,7 +25,7 @@
   /* Landing page typography. The Figma template renders its marketing
    * copy in Nimbus Sans L (a Helvetica clone), the product mockup in
    * Geist, and the embedded Loom chrome in Inter. --font-geist-sans and
-   * --font-inter are injected by app/(landing)/layout.tsx via next/font.
+   * --font-inter are injected by app/landing/layout.tsx via next/font.
    */
   --font-marketing: "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-geist: var(--font-geist-sans), "Helvetica Neue", Arial, sans-serif;

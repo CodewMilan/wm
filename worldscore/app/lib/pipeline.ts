@@ -8,6 +8,13 @@ import type { ConceptDirection } from "./world/spec";
  * Upload → analysis → concept generation. Kept out of the components so the
  * whole flow reads in one place and can be driven by the demo shortcut too.
  */
+/** Fallback demo path, so a broken upload can never strand a live demo. */
+export async function runDemoTrack(): Promise<void> {
+  const res = await fetch("/demo-track.wav");
+  const blob = await res.blob();
+  await runPipeline(new File([blob], "Synthetic Test Track.wav", { type: "audio/wav" }));
+}
+
 export async function runPipeline(file: File): Promise<void> {
   const store = useWorldscore.getState();
   const url = URL.createObjectURL(file);
