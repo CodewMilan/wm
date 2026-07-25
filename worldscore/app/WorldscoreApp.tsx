@@ -1,11 +1,13 @@
 "use client";
 
 import { LongliveV2Provider } from "@reactor-models/longlive-v2";
+import { LingbotWorld2Provider } from "@reactor-models/lingbot-world-2";
 import { useWorldscore } from "./lib/store";
 import { Upload } from "./components/Upload";
 import { Analyzing } from "./components/Analyzing";
 import { ConceptBoard } from "./components/ConceptBoard";
 import { Player } from "./components/Player";
+import { ExplorePlayer } from "./components/ExplorePlayer";
 
 // The SDK calls this on every coordinator hop, not just at connect, so it has
 // to stay a resolver. The route sets Cache-Control, so repeat calls are served
@@ -22,16 +24,22 @@ async function fetchToken(): Promise<string> {
 
 export function WorldscoreApp() {
   const phase = useWorldscore((s) => s.phase);
+  const mode = useWorldscore((s) => s.mode);
 
+  // Both providers wrap the tree, but neither connects on mount — each player
+  // opens its own session when it renders. So only the mode actually in use
+  // ever reserves a GPU.
   return (
     <LongliveV2Provider getJwt={fetchToken}>
-      <main className="relative min-h-screen overflow-hidden">
-        <Backdrop />
-        {phase === "upload" && <Upload />}
-        {phase === "analyzing" && <Analyzing />}
-        {phase === "concepts" && <ConceptBoard />}
-        {phase === "session" && <Player />}
-      </main>
+      <LingbotWorld2Provider getJwt={fetchToken}>
+        <main className="relative min-h-screen overflow-hidden">
+          <Backdrop />
+          {phase === "upload" && <Upload />}
+          {phase === "analyzing" && <Analyzing />}
+          {phase === "concepts" && <ConceptBoard />}
+          {phase === "session" && (mode === "watch" ? <Player /> : <ExplorePlayer />)}
+        </main>
+      </LingbotWorld2Provider>
     </LongliveV2Provider>
   );
 }

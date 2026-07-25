@@ -7,6 +7,9 @@ import { readFileSync } from "node:fs";
 import { analyzePcm } from "../app/lib/audio/analyze";
 import { fallbackDirections } from "../app/lib/concepts/generate";
 import { compileScore, CHUNK_MS, SCENE_MAX_CHUNKS } from "../app/lib/world/score";
+import { compileExplore, describeCamera } from "../app/lib/world/explore";
+import { describeWeather } from "../app/lib/world/climate";
+import { SEED_IMAGES } from "../app/lib/world/seeds";
 
 const path = process.argv[2] ?? "public/demo-track.wav";
 const buf = readFileSync(path);
@@ -110,3 +113,30 @@ if (worstChunks >= SCENE_MAX_CHUNKS) {
 console.log("  OK: every scene stays inside the budget\n");
 
 console.log(`  opening prompt:\n    ${score.cues[0].prompt}\n`);
+
+// Explore mode compiles the same analysis against a seed image instead of a
+// generated direction. Check the climate actually moves and the camera follows.
+const seed = SEED_IMAGES[0];
+const explore = compileExplore(analysis, seed);
+
+console.log(`  explore score on "${seed.name}" (${explore.steps.length} steps):`);
+for (const step of explore.steps) {
+  console.log(
+    `    ${(step.atMs / 1000).toFixed(1).padStart(6)}s  ${step.climate.season.padEnd(7)} ` +
+      `${describeWeather(step.climate).padEnd(20)} camera: ${describeCamera(step.camera)}`,
+  );
+}
+
+const seasons = new Set(explore.steps.map((s) => s.climate.season));
+const weathers = new Set(explore.steps.map((s) => s.climate.weather));
+console.log(
+  `\n  climate moved through ${seasons.size} season(s) and ${weathers.size} weather state(s)`,
+);
+
+const longest = Math.max(...explore.steps.map((s) => s.prompt.length));
+console.log(`  longest explore prompt: ${longest} chars`);
+if (longest > 1000) {
+  console.error("  FAIL: a prompt exceeded the 1000-char guard");
+  process.exit(1);
+}
+console.log("  OK: every prompt is inside the length guard\n");

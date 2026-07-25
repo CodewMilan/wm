@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo } from "react";
-import { useWorldscore } from "../lib/store";
+import { useWorldscore, type SessionMode } from "../lib/store";
 import { compileScore } from "../lib/world/score";
 import type { ConceptDirection } from "../lib/world/spec";
+import { SeedBoard } from "./SeedBoard";
 
 export function ConceptBoard() {
-  const { trackName, analysis, directions, conceptSource, chooseDirection, reset } = useWorldscore();
+  const { trackName, analysis, directions, conceptSource, mode, chooseDirection, reset } =
+    useWorldscore();
 
   if (!analysis) return null;
 
@@ -15,7 +17,7 @@ export function ConceptBoard() {
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-zinc-800/80 pb-6">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.35em] text-zinc-500">
-            Five directions
+            {mode === "watch" ? "Five directions" : "Pick a world to enter"}
           </p>
           <h1 className="mt-2 text-3xl font-light tracking-tight text-zinc-50">
             {trackName || "Untitled"}
@@ -36,24 +38,62 @@ export function ConceptBoard() {
         </div>
       </header>
 
+      <ModeSwitch />
       <StructureStrip />
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {directions.map((direction, i) => (
-          <ConceptCard
-            key={direction.id}
-            direction={direction}
-            index={i}
-            onSelect={() => chooseDirection(direction)}
-          />
+      {mode === "watch" ? (
+        <>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            {directions.map((direction, i) => (
+              <ConceptCard
+                key={direction.id}
+                direction={direction}
+                index={i}
+                onSelect={() => chooseDirection(direction)}
+              />
+            ))}
+          </div>
+
+          {conceptSource === "fallback" && (
+            <p className="mt-6 font-mono text-[11px] text-zinc-600">
+              Directions composed from the offline library — no language model configured.
+            </p>
+          )}
+        </>
+      ) : (
+        <SeedBoard />
+      )}
+    </div>
+  );
+}
+
+const MODES: { id: SessionMode; label: string; blurb: string }[] = [
+  { id: "watch", label: "Watch", blurb: "a cut-to-the-beat film you sit back and watch" },
+  { id: "explore", label: "Explore", blurb: "walk around inside it while the music moves the sky" },
+];
+
+/** The one fork in the flow: same track and same climate, two different models. */
+function ModeSwitch() {
+  const { mode, setMode } = useWorldscore();
+
+  return (
+    <div className="mt-8 flex flex-wrap items-center gap-3">
+      <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+        {MODES.map((m) => (
+          <button
+            key={m.id}
+            onClick={() => setMode(m.id)}
+            className={`rounded-md px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors ${
+              mode === m.id
+                ? "bg-brand text-brand-fg"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            {m.label}
+          </button>
         ))}
       </div>
-
-      {conceptSource === "fallback" && (
-        <p className="mt-6 font-mono text-[11px] text-zinc-600">
-          Directions composed from the offline library — no language model configured.
-        </p>
-      )}
+      <p className="text-[13px] text-zinc-500">{MODES.find((m) => m.id === mode)?.blurb}</p>
     </div>
   );
 }

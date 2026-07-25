@@ -27,6 +27,12 @@ export interface CameraState {
   lookVertical: "idle" | "up" | "down";
   /** Degrees per frame, 0..30. Ignored while both look axes are idle. */
   rotationSpeedDeg: number;
+  /**
+   * How long to hold this move before settling back to still. The model
+   * conditions on its own recent frames, so an indefinite hold smears; short
+   * moves with a settled world between them stay clean.
+   */
+  holdMs: number;
 }
 
 export const CAMERA_STILL: CameraState = {
@@ -35,35 +41,45 @@ export const CAMERA_STILL: CameraState = {
   lookHorizontal: "idle",
   lookVertical: "idle",
   rotationSpeedDeg: 0,
+  holdMs: 0,
 };
 
 /**
  * The same camera intent Watch mode writes as prose, expressed as inputs.
  * Energy scales the rotation rate so a loud section actually feels faster
  * rather than just being described that way.
+ *
+ * Two constraints from the model shape these choices. Lateral strafing is its
+ * least reliable axis because it slides the camera off whatever it had
+ * centred, so sideways intent is routed through turning instead. And the model
+ * conditions on its own recent output, so a move that is held indefinitely
+ * accumulates drift — hence `holdMs` on every state, after which the world is
+ * allowed to settle again.
  */
 export function cameraForRole(role: SectionRole, energy: number): CameraState {
   const speed = (base: number) => Math.min(30, Math.round(base + energy * 6));
 
   switch (role) {
     case "drop":
-      return { ...CAMERA_STILL, moveLongitudinal: "forward", lookHorizontal: "right", rotationSpeedDeg: speed(9) };
+      return { ...CAMERA_STILL, moveLongitudinal: "forward", lookHorizontal: "right", rotationSpeedDeg: speed(9), holdMs: 5_000 };
     case "chorus":
-      return { ...CAMERA_STILL, moveLongitudinal: "forward", lookHorizontal: "left", rotationSpeedDeg: speed(5) };
+      return { ...CAMERA_STILL, moveLongitudinal: "forward", lookHorizontal: "left", rotationSpeedDeg: speed(5), holdMs: 5_000 };
     case "build":
-      return { ...CAMERA_STILL, moveLongitudinal: "forward", rotationSpeedDeg: speed(2) };
+      return { ...CAMERA_STILL, moveLongitudinal: "forward", rotationSpeedDeg: speed(2), holdMs: 6_000 };
     case "breakdown":
       // Everything stops. The stillness is the point — it reads as the world
       // holding its breath, and it costs nothing to implement.
       return CAMERA_STILL;
     case "bridge":
-      return { ...CAMERA_STILL, moveLateral: "strafe_left", rotationSpeedDeg: speed(2) };
+      // Turning rather than strafing: same "we moved sideways" read, on the
+      // axis the model is actually good at.
+      return { ...CAMERA_STILL, lookHorizontal: "left", rotationSpeedDeg: speed(3), holdMs: 4_000 };
     case "outro":
-      return { ...CAMERA_STILL, moveLongitudinal: "back", rotationSpeedDeg: speed(1) };
+      return { ...CAMERA_STILL, moveLongitudinal: "back", rotationSpeedDeg: speed(1), holdMs: 6_000 };
     case "intro":
-      return { ...CAMERA_STILL, moveLongitudinal: "forward", rotationSpeedDeg: speed(1) };
+      return { ...CAMERA_STILL, moveLongitudinal: "forward", rotationSpeedDeg: speed(1), holdMs: 6_000 };
     default:
-      return { ...CAMERA_STILL, moveLongitudinal: "forward", rotationSpeedDeg: speed(3) };
+      return { ...CAMERA_STILL, moveLongitudinal: "forward", rotationSpeedDeg: speed(3), holdMs: 5_000 };
   }
 }
 
@@ -126,31 +142,56 @@ function trimPrompt(prompt: string): string {
  * the same moment, so they're merged and de-duplicated rather than run as two
  * loops racing each other.
  */
+/**
+ * Climate cues land on a fixed grid and sections land wherever the music says,
+ * so the two routinely fall a fraction of a second apart. Anything closer than
+ * this is one moment and gets sent as one command.
+ */
+const MERGE_WINDOW_MS = 1_500;
+
+interface Mark {
+  atMs: number;
+  climate?: Climate;
+  role?: SectionRole;
+  reason: string;
+}
+
 export function compileExplore(analysis: AudioAnalysis, seed: SeedImage): ExploreScore {
-  const climateCues = compileClimate(analysis);
-  const marks = new Map<number, { climate?: Climate; role?: SectionRole; reason: string }>();
+  const raw: Mark[] = [
+    ...compileClimate(analysis).map((cue) => ({
+      atMs: Math.round(cue.atMs),
+      climate: cue.climate,
+      reason: cue.reason,
+    })),
+    ...analysis.sections.map((section) => ({
+      atMs: Math.round(section.startMs),
+      role: section.role,
+      reason: `${section.role} — the camera changes with it`,
+    })),
+  ].sort((a, b) => a.atMs - b.atMs);
 
-  for (const cue of climateCues) {
-    marks.set(Math.round(cue.atMs), { climate: cue.climate, reason: cue.reason });
-  }
-
-  for (const section of analysis.sections) {
-    const at = Math.round(section.startMs);
-    const existing = marks.get(at);
-    if (existing) {
-      existing.role = section.role;
+  // Fold near-simultaneous marks together, keeping the earlier time. A section
+  // boundary and a weather change 200ms apart would otherwise fire two prompts
+  // back to back and read as a stutter.
+  const merged: Mark[] = [];
+  for (const mark of raw) {
+    const previous = merged[merged.length - 1];
+    if (previous && mark.atMs - previous.atMs <= MERGE_WINDOW_MS) {
+      previous.climate = mark.climate ?? previous.climate;
+      previous.role = mark.role ?? previous.role;
+      // The climate is the more interesting half, so let it own the wording.
+      if (mark.climate) previous.reason = mark.reason;
       continue;
     }
-    marks.set(at, { role: section.role, reason: `${section.role} — the camera changes with it` });
+    merged.push({ ...mark });
   }
 
-  const ordered = [...marks.entries()].sort((a, b) => a[0] - b[0]);
   const steps: ExploreStep[] = [];
-
   let climate = climateAt(analysis, 0);
   let role: SectionRole = analysis.sections[0]?.role ?? "intro";
 
-  for (const [atMs, mark] of ordered) {
+  for (const mark of merged) {
+    const atMs = mark.atMs;
     if (mark.climate) climate = mark.climate;
     if (mark.role) role = mark.role;
 
