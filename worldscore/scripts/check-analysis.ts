@@ -5,6 +5,8 @@
 
 import { readFileSync } from "node:fs";
 import { analyzePcm } from "../app/lib/audio/analyze";
+import { fallbackDirections } from "../app/lib/concepts/generate";
+import { compileScore, CHUNK_MS, SCENE_MAX_CHUNKS } from "../app/lib/world/score";
 
 const path = process.argv[2] ?? "public/demo-track.wav";
 const buf = readFileSync(path);
@@ -58,3 +60,34 @@ for (const s of analysis.sections) {
       `${s.isImpact ? "  IMPACT" : ""}`,
   );
 }
+
+// Compile the first direction's score and assert the invariant that actually
+// breaks generation: a scene must be cut before LongLive's 48-chunk ceiling.
+const direction = fallbackDirections(analysis)[0];
+const score = compileScore(analysis, direction);
+
+console.log(`\n  score for "${direction.name}" (${score.cues.length} cues):`);
+let lastCutMs = 0;
+let worstChunks = 0;
+for (const cue of score.cues) {
+  const sinceCut = cue.atMs - lastCutMs;
+  const chunks = sinceCut / CHUNK_MS;
+  if (cue.kind === "cut") {
+    worstChunks = Math.max(worstChunks, chunks);
+    lastCutMs = cue.atMs;
+  }
+  console.log(
+    `    ${(cue.atMs / 1000).toFixed(1).padStart(6)}s  ${cue.kind.padEnd(4)}  ${cue.reason}`,
+  );
+}
+const tailChunks = (analysis.durationMs - lastCutMs) / CHUNK_MS;
+worstChunks = Math.max(worstChunks, tailChunks);
+
+console.log(`\n  longest scene: ${worstChunks.toFixed(1)} chunks (ceiling ${SCENE_MAX_CHUNKS})`);
+if (worstChunks >= SCENE_MAX_CHUNKS) {
+  console.error("  FAIL: a scene exceeds the chunk ceiling and would stop generating");
+  process.exit(1);
+}
+console.log("  OK: every scene stays inside the budget\n");
+
+console.log(`  opening prompt:\n    ${score.cues[0].prompt}\n`);

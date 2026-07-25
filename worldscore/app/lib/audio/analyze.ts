@@ -4,7 +4,7 @@ import type { AudioAnalysis, Section, SectionRole } from "./types";
 /** Texture frames per second — the resolution structure detection works at. */
 const TEXTURE_HZ = 4;
 /** Half-width of the novelty comparison window, in texture frames. */
-const NOVELTY_WINDOW = 12;
+const NOVELTY_WINDOW = 20;
 /** Minimum musical distance between two section boundaries. */
 const MIN_SECTION_MS = 9_000;
 
@@ -18,17 +18,26 @@ function toTexture(src: ArrayLike<number>, fps: number, textureCount: number): F
   return out;
 }
 
-function cosineDistance(a: number[], b: number[]): number {
+/**
+ * Cosine distance alone is scale-invariant, so a section that just gets louder
+ * with the same spectral shape — a verse dropping into a chorus — scores zero.
+ * Blending in a magnitude-sensitive term catches both timbral changes and pure
+ * dynamic ones, which is most of what section boundaries actually are.
+ */
+function featureDistance(a: number[], b: number[]): number {
   let dot = 0;
   let na = 0;
   let nb = 0;
+  let sq = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
     na += a[i] * a[i];
     nb += b[i] * b[i];
+    sq += (a[i] - b[i]) ** 2;
   }
-  if (na === 0 || nb === 0) return 0;
-  return 1 - dot / (Math.sqrt(na) * Math.sqrt(nb));
+  const cosine = na === 0 || nb === 0 ? 0 : 1 - dot / (Math.sqrt(na) * Math.sqrt(nb));
+  const euclidean = Math.sqrt(sq / a.length);
+  return 0.45 * cosine + 0.55 * Math.min(1, euclidean);
 }
 
 /**
@@ -46,7 +55,7 @@ function noveltyCurve(bands: Float32Array[], count: number): Float32Array {
     if (t - from < 3 || to - t < 3) continue;
     const before = bands.map((b) => mean(b, from, t));
     const after = bands.map((b) => mean(b, t, to));
-    novelty[t] = cosineDistance(before, after);
+    novelty[t] = featureDistance(before, after);
   }
   return novelty;
 }
@@ -56,7 +65,7 @@ function pickPeaks(novelty: Float32Array, minGapFrames: number): number[] {
   let variance = 0;
   for (let i = 0; i < novelty.length; i++) variance += (novelty[i] - avg) ** 2;
   const std = Math.sqrt(variance / Math.max(1, novelty.length));
-  const threshold = avg + std * 0.6;
+  const threshold = avg + std * 0.35;
 
   const candidates: { index: number; value: number }[] = [];
   for (let t = 1; t < novelty.length - 1; t++) {
@@ -162,8 +171,15 @@ export function analyzePcm(pcm: Float32Array, sampleRate: number): AudioAnalysis
 
   const tempo = estimateTempo(frames.flux, frames.fps);
 
+  // Centroid is in Hz and spans orders of magnitude, so a few noisy-hat frames
+  // would otherwise squash the whole track toward zero. Compress it first.
+  const logCentroid = new Float32Array(frames.centroid.length);
+  for (let i = 0; i < frames.centroid.length; i++) {
+    logCentroid[i] = Math.log2(1 + frames.centroid[i]);
+  }
+
   const energyN = normalise(smooth(frames.rms, 2));
-  const brightN = normalise(smooth(frames.centroid, 2));
+  const brightN = normalise(smooth(logCentroid, 2));
   const lowN = normalise(smooth(frames.low, 2));
   const midN = normalise(smooth(frames.mid, 2));
   const highN = normalise(smooth(frames.high, 2));
