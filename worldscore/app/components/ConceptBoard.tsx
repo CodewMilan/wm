@@ -7,7 +7,7 @@ import type { ConceptDirection } from "../lib/world/spec";
 import { SeedBoard } from "./SeedBoard";
 
 export function ConceptBoard() {
-  const { trackName, analysis, directions, conceptSource, mode, chooseDirection, reset } =
+  const { trackName, analysis, directions, conceptSource, conceptNote, mode, chooseDirection, reset } =
     useWorldscore();
 
   if (!analysis) return null;
@@ -56,7 +56,8 @@ export function ConceptBoard() {
 
           {conceptSource === "fallback" && (
             <p className="mt-6 font-mono text-[11px] text-zinc-600">
-              Directions composed from the offline library — no language model configured.
+              Directions composed from the offline library
+              {conceptNote ? ` — ${conceptNote}` : ""}.
             </p>
           )}
         </>

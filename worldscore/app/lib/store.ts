@@ -27,6 +27,9 @@ interface WorldscoreState {
 
   directions: ConceptDirection[];
   conceptSource: "llm" | "fallback" | null;
+  /** Why we fell back, when we did. A timeout and a missing key look identical
+   *  on screen otherwise, which hides a broken model behind plausible output. */
+  conceptNote: string | null;
 
   direction: ConceptDirection | null;
   score: Score | null;
@@ -50,7 +53,11 @@ interface WorldscoreState {
   setError: (error: string | null) => void;
   startAnalysis: (name: string, url: string) => void;
   setAnalysis: (analysis: AudioAnalysis) => void;
-  setDirections: (directions: ConceptDirection[], source: "llm" | "fallback") => void;
+  setDirections: (
+    directions: ConceptDirection[],
+    source: "llm" | "fallback",
+    note?: string,
+  ) => void;
   chooseDirection: (direction: ConceptDirection) => void;
   chooseSeed: (seed: SeedImage) => void;
   markFired: (cue: Cue) => void;
@@ -69,6 +76,7 @@ function blank() {
     analysis: null,
     directions: [] as ConceptDirection[],
     conceptSource: null,
+    conceptNote: null,
     direction: null,
     score: null,
     seed: null,
@@ -97,8 +105,8 @@ export const useWorldscore = create<WorldscoreState>((set, get) => ({
 
   setAnalysis: (analysis) => set({ analysis }),
 
-  setDirections: (directions, conceptSource) =>
-    set({ directions, conceptSource, phase: "concepts" }),
+  setDirections: (directions, conceptSource, note) =>
+    set({ directions, conceptSource, conceptNote: note ?? null, phase: "concepts" }),
 
   chooseDirection: (direction) => {
     const analysis = get().analysis;

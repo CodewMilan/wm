@@ -7,8 +7,15 @@ import { ARCHETYPES, selectArchetypes, type Archetype } from "./archetypes";
 const BASE_URL = process.env.LLM_BASE_URL ?? "https://integrate.api.nvidia.com/v1";
 const MODEL = process.env.LLM_MODEL ?? "nvidia/llama-3.3-nemotron-super-49b-v1.5";
 const API_KEY = process.env.LLM_API_KEY;
-/** Past this the user is staring at a loading screen; fall back instead. */
-const TIMEOUT_MS = 25_000;
+/**
+ * Past this the user is staring at a loading screen; fall back instead.
+ *
+ * Measured: Nemotron 3 Ultra returns five full directions in ~37s, and the
+ * smaller 49B is slower still at ~82s (NIM serves them with different
+ * capacity, so parameter count doesn't predict latency here). 60s leaves
+ * headroom over the fast path without stranding anyone behind the slow one.
+ */
+const TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 60_000);
 
 const SYSTEM_PROMPT = `You are the concept director for Worldscore, a tool that turns a musician's rough track into cinematic world directions for a real-time video model.
 
@@ -152,6 +159,12 @@ export async function generateDirections(analysis: AudioAnalysis): Promise<{
         temperature: 0.9,
         max_tokens: 4096,
         response_format: { type: "json_object" },
+        // Nemotron 3 reasons by default, which costs about 5x the latency here
+        // and spends the token budget on `reasoning_content` we throw away —
+        // it can even starve the JSON and truncate it. This is a fixed-shape
+        // creative task with a user watching a spinner, so thinking is off.
+        // Providers that don't recognise the key ignore it.
+        chat_template_kwargs: { enable_thinking: false },
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: describeTrack(analysis) },
@@ -198,10 +211,18 @@ export async function generateDirections(analysis: AudioAnalysis): Promise<{
       source: "llm",
     };
   } catch (error) {
+    // An abort reads as "This operation was aborted", which tells nobody that
+    // the model simply took too long. Name the real cause and the model, since
+    // this string is what the operator sees when the LLM silently stops working.
+    const message =
+      (error as Error).name === "AbortError"
+        ? `${MODEL} did not answer within ${TIMEOUT_MS / 1000}s`
+        : (error as Error).message;
+
     return {
       directions: fallbackDirections(analysis),
       source: "fallback",
-      note: (error as Error).message,
+      note: message,
     };
   } finally {
     clearTimeout(timer);

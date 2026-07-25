@@ -31,13 +31,14 @@ export async function runPipeline(file: File): Promise<void> {
     });
     if (!res.ok) throw new Error(`Concept generation failed: ${res.status}`);
 
-    const { directions, source } = (await res.json()) as {
+    const { directions, source, note } = (await res.json()) as {
       directions: ConceptDirection[];
       source: "llm" | "fallback";
+      note?: string;
     };
     if (!directions?.length) throw new Error("No directions returned");
 
-    useWorldscore.getState().setDirections(directions, source);
+    useWorldscore.getState().setDirections(directions, source, note);
   } catch (error) {
     const store = useWorldscore.getState();
     store.setError((error as Error).message);
