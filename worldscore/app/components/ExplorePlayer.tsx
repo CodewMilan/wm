@@ -103,6 +103,8 @@ export function ExplorePlayer() {
   const [positionMs, setPositionMs] = useState(0);
   const [arming, setArming] = useState("Opening a session");
   const [finished, setFinished] = useState(false);
+  const [settled, setSettled] = useState(false);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useLingbotWorld2State(setSnapshot);
   useLingbotWorld2CommandError((msg) => setCommandError(`${msg.command}: ${msg.reason}`));
@@ -131,6 +133,28 @@ export function ExplorePlayer() {
     },
     [setMoveLongitudinal, setMoveLateral, setLookHorizontal, setLookVertical, setRotationSpeedDeg],
   );
+
+  /**
+   * Apply a camera the score asked for, then let the world settle again.
+   * Holding a move open until the next cue would smear the image, so each one
+   * runs for its own bounded window and releases. Manual driving is exempt —
+   * the user's keyup is their release.
+   */
+  const applyScoreCamera = useCallback(
+    async (camera: CameraState) => {
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      await applyCamera(camera);
+      if (camera.holdMs <= 0) return;
+
+      holdTimerRef.current = setTimeout(() => {
+        if (useWorldscore.getState().manualCamera) return;
+        void applyCamera(CAMERA_STILL);
+      }, camera.holdMs);
+    },
+    [applyCamera],
+  );
+
+  useEffect(() => () => void (holdTimerRef.current && clearTimeout(holdTimerRef.current)), []);
 
   // Connect once. The ref guard matters because a double-invoked effect would
   // otherwise open two GPU sessions against a limited session quota.
@@ -186,19 +210,30 @@ export function ExplorePlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, exploreScore, seed]);
 
-  // Only drop the needle once frames are actually being generated, so the track
-  // and the world begin together rather than the audio racing ahead.
+  // Only drop the needle once frames are being generated *and* the world has
+  // had its settling window, so the track and a stable world begin together
+  // rather than the audio racing an unfinished scene.
   useEffect(() => {
     if (!snapshot?.started || audioStartedRef.current) return;
     audioStartedRef.current = true;
-    sessionStartRef.current = performance.now();
-    void audioRef.current?.play().catch(() => undefined);
+
+    const timer = setTimeout(() => {
+      sessionStartRef.current = performance.now();
+      setSettled(true);
+      void audioRef.current?.play().catch(() => undefined);
+
+      const opener = exploreScore?.steps[0];
+      if (opener) void applyScoreCamera(opener.camera);
+    }, SETTLE_MS);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot?.started]);
 
   // Keyboard drive. The model holds each axis until told otherwise, so both
   // press and release have to be sent — a missed keyup walks forever.
   useEffect(() => {
-    if (!snapshot?.started) return;
+    if (!settled) return;
 
     const onDown = (e: KeyboardEvent) => {
       if (!MOVE_KEYS[e.code] || e.repeat) return;
@@ -206,6 +241,8 @@ export function ExplorePlayer() {
       heldKeysRef.current.add(e.code);
       lastKeyMsRef.current = performance.now();
       useWorldscore.getState().setManualCamera(true);
+      // Manual driving cancels any pending settle-back; the keyup is the release.
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
       void applyCamera(cameraFromKeys(heldKeysRef.current));
     };
 
@@ -231,13 +268,13 @@ export function ExplorePlayer() {
       window.removeEventListener("keyup", onUp);
       window.removeEventListener("blur", onBlur);
     };
-  }, [snapshot?.started, applyCamera]);
+  }, [settled, applyCamera]);
 
   // The steering loop. The audio element is the master clock — the model's
   // chunk counter is never used for timing, so steps land on the beat even when
   // generation runs behind real time.
   useEffect(() => {
-    if (!snapshot?.started || status !== "ready" || !exploreScore) return;
+    if (!settled || status !== "ready" || !exploreScore) return;
 
     let raf = 0;
 
@@ -248,7 +285,7 @@ export function ExplorePlayer() {
         // The score only gets the camera back once the user has stopped
         // driving; taking it mid-press would fight them for control.
         const { manualCamera } = useWorldscore.getState();
-        if (!manualCamera) await applyCamera(step.camera);
+        if (!manualCamera) await applyScoreCamera(step.camera);
         useWorldscore.getState().markStepFired(step);
       } finally {
         firingRef.current = false;
@@ -277,7 +314,7 @@ export function ExplorePlayer() {
         performance.now() - lastKeyMsRef.current > YIELD_BACK_MS
       ) {
         useWorldscore.getState().setManualCamera(false);
-        if (activeStep) void applyCamera(activeStep.camera);
+        if (activeStep) void applyScoreCamera(activeStep.camera);
       }
 
       if (firingRef.current) return;
@@ -292,11 +329,9 @@ export function ExplorePlayer() {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot?.started, status, exploreScore]);
+  }, [settled, status, exploreScore]);
 
   if (!seed || !exploreScore) return null;
-
-  const connecting = status !== "ready" || !snapshot?.started;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -336,7 +371,12 @@ export function ExplorePlayer() {
 
       <div className="relative mx-6 flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-black">
         <LingbotWorld2MainVideoView className="h-full w-full" videoObjectFit="cover" />
-        {connecting && <EnteringOverlay label={arming} seedImage={seed.image} />}
+        {!settled && (
+          <EnteringOverlay
+            label={snapshot?.started ? "Letting the world settle" : arming}
+            seedImage={seed.image}
+          />
+        )}
         <NowExploring />
         <DriveHint />
       </div>

@@ -14,7 +14,7 @@
 // and stripped from the text.
 
 import type { AudioAnalysis, SectionRole } from "../audio/types";
-import { climateAt, compileClimate, describeWeather, seasonPhrase, weatherPhrase } from "./climate";
+import { climateAt, compileClimate, seasonPhrase, weatherPhrase } from "./climate";
 import type { Climate } from "./climate";
 import type { SeedImage } from "./seeds";
 import { composePrompt, type WorldSpec } from "./spec";
@@ -223,5 +223,3 @@ export function describeCamera(camera: CameraState): string {
   if (camera.lookVertical !== "idle") parts.push(`looking ${camera.lookVertical}`);
   return parts.length ? parts.join(", ") : "holding still";
 }
-
-export { describeWeather };
