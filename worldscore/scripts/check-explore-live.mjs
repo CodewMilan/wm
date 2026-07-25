@@ -16,12 +16,23 @@ const page = await ctx.newPage();
 
 const errors = [];
 const commandErrors = [];
+const t0 = Date.now();
+const stamp = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
+
 page.on("console", (msg) => {
   const text = msg.text();
   if (/command_error/.test(text)) commandErrors.push(text);
   if (msg.type() === "error") errors.push(text);
+  // Surface anything the SDK says about the session, which is the only window
+  // into why a connection dropped.
+  if (/reactor|longlive|lingbot|webrtc|session|track/i.test(text)) {
+    console.log(`    [${stamp()}] ${msg.type()}: ${text.slice(0, 180)}`);
+  }
 });
-page.on("pageerror", (e) => errors.push(`uncaught: ${e.message}`));
+page.on("pageerror", (e) => {
+  errors.push(`uncaught: ${e.message}`);
+  console.log(`    [${stamp()}] pageerror: ${e.message}`);
+});
 
 let failures = 0;
 const check = (label, ok, detail = "") => {
@@ -56,8 +67,21 @@ try {
   const seen = new Set();
   const deadline = Date.now() + 180_000;
   let started = false;
+  let lastStatus = "";
 
   while (Date.now() < deadline) {
+    // The header carries the connection status, and watching it change is how
+    // we tell "still warming up" apart from "the session went away".
+    const statusText = await page
+      .locator("header span, header p")
+      .allTextContents()
+      .then((all) => all.find((t) => /READY|CONNECT|WAIT|DISCONNECT/i.test(t)) ?? "")
+      .catch(() => "");
+    if (statusText && statusText !== lastStatus) {
+      lastStatus = statusText;
+      console.log(`  [${stamp()}] status: ${statusText.trim()}`);
+    }
+
     const label = await page
       .locator("div.absolute >> p, div.absolute >> span")
       .first()
@@ -94,7 +118,7 @@ try {
   check("no 'No prompt set' rejection", !noPromptSet, commandErrors.join(" | ") || "clean");
   check("the model started generating frames", started, started ? "frames arriving" : "never started");
 
-  const shownError = await page.locator("p.text-red-400").first().textContent().catch(() => null);
+  const shownError = await page.locator(".text-red-400").first().textContent().catch(() => null);
   check("no error shown in the UI", !shownError, shownError ?? "none");
 
   if (commandErrors.length) {

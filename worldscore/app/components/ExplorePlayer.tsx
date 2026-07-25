@@ -7,6 +7,7 @@ import {
   useLingbotWorld2State,
   useLingbotWorld2CommandError,
   useLingbotWorld2ImageAccepted,
+  useLingbotWorld2ConditionsReady,
 } from "@reactor-models/lingbot-world-2";
 import type { LingbotWorld2StateMessage } from "@reactor-models/lingbot-world-2";
 import { useWorldscore } from "../lib/store";
@@ -115,6 +116,7 @@ export function ExplorePlayer() {
   // The arming handshake polls for confirmation, and a captured state variable
   // would hand it the snapshot from before the command was ever sent.
   const snapshotRef = useRef<LingbotWorld2StateMessage | null>(null);
+  const conditionsRef = useRef({ hasImage: false, hasPrompt: false });
 
   useLingbotWorld2State((msg) => {
     snapshotRef.current = msg;
@@ -128,6 +130,20 @@ export function ExplorePlayer() {
     setCommandError((existing) => existing ?? text);
   });
   useLingbotWorld2ImageAccepted((msg) => setImageInfo({ width: msg.width, height: msg.height }));
+  // `conditions_ready` exists precisely to say whether `start` will be accepted,
+  // so it is the primary signal; the periodic state snapshot is a fallback in
+  // case the event is missed while the session is still coming up.
+  useLingbotWorld2ConditionsReady((msg) => {
+    conditionsRef.current = { hasImage: msg.has_image, hasPrompt: msg.has_prompt };
+  });
+
+  const conditions = useCallback(
+    () => ({
+      hasImage: conditionsRef.current.hasImage || Boolean(snapshotRef.current?.has_image),
+      hasPrompt: conditionsRef.current.hasPrompt || Boolean(snapshotRef.current?.has_prompt),
+    }),
+    [],
+  );
 
   /** Push only the axes that actually changed. */
   const applyCamera = useCallback(
@@ -214,16 +230,16 @@ export function ExplorePlayer() {
         setArming("Anchoring the world");
         await confirmCommand(
           () => setImage({ image: ref }),
-          () => snapshotRef.current,
-          (s) => s.has_image,
+          conditions,
+          (c) => c.hasImage,
           { what: "the seed image", timeoutMs: HANDSHAKE_MS },
         );
 
         setArming("Handing over the prompt");
         await confirmCommand(
           () => setPrompt({ prompt: opener.prompt }),
-          () => snapshotRef.current,
-          (s) => s.has_prompt,
+          conditions,
+          (c) => c.hasPrompt,
           { what: "the opening prompt", timeoutMs: HANDSHAKE_MS },
         );
 

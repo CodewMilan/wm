@@ -6,6 +6,7 @@ import {
   useLongliveV2,
   useLongliveV2State,
   useLongliveV2CommandError,
+  useLongliveV2ShotSet,
 } from "@reactor-models/longlive-v2";
 import type { LongliveV2StateMessage } from "@reactor-models/longlive-v2";
 import { useWorldscore } from "../lib/store";
@@ -50,6 +51,14 @@ export function Player() {
   // The opener handshake polls for confirmation, so it needs the live snapshot
   // rather than the one captured when the await began.
   const snapshotRef = useRef<LongliveV2StateMessage | null>(null);
+  // LongLive acknowledges an accepted shot with `shot_set` rather than
+  // refreshing `has_prompt` before generation begins, so the event is the
+  // signal that matters and the snapshot is only a fallback.
+  const shotAckedRef = useRef(false);
+
+  useLongliveV2ShotSet(() => {
+    shotAckedRef.current = true;
+  });
 
   useLongliveV2State((msg) => {
     snapshotRef.current = msg;
@@ -98,8 +107,8 @@ export function Player() {
         // model has taken them — so wait for it to say so.
         await confirmCommand(
           () => setShot({ prompt: opener.prompt }),
-          () => snapshotRef.current,
-          (s) => s.has_prompt,
+          () => shotAckedRef.current || Boolean(snapshotRef.current?.has_prompt),
+          (accepted) => accepted,
           { what: "the opening shot", timeoutMs: HANDSHAKE_MS },
         );
 

@@ -36,7 +36,9 @@ export async function waitForState<T>(
 
   for (;;) {
     const state = read();
-    if (state && ready(state)) return state;
+    // Checked against null rather than truthiness: a caller may legitimately
+    // read a plain boolean, and `false` means "not yet", not "nothing here".
+    if (state != null && ready(state)) return state;
 
     if (options.signal?.aborted) throw new Error(`Cancelled while waiting for ${options.what}`);
     if (Date.now() >= deadline) throw new HandshakeTimeout(options.what, options.timeoutMs);
