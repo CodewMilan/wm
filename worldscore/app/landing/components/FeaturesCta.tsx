@@ -52,11 +52,11 @@ export function FeaturesCta() {
             gapClass="gap-[15.25px]"
             body={
               <>
-                One rough track becomes five distinct world directions
+                One rough track becomes five distinct world
                 <br />
-                in minutes, instead of days of moodboards and
+                directions in minutes, instead of days of
                 <br />
-                treatment drafts.
+                moodboards and treatment drafts.
               </>
             }
           />

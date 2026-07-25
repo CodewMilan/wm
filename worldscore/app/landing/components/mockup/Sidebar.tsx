@@ -181,7 +181,7 @@ export function Sidebar() {
         <Row
           icon={<Avatar src="/landing/app/logo-dark.png" />}
           label="Worldscore"
-          width={70}
+          width={80}
         />
       </div>
     </div>

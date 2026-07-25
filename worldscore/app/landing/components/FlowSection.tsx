@@ -83,7 +83,7 @@ function Node({ node }: { node: FlowNode }) {
 export function FlowSection() {
   return (
     <section className="flex h-[900px] items-start justify-center bg-[#121212] px-[115.2px]">
-      <div className="flex min-w-px flex-1 items-center justify-center self-stretch border-r border-white/5 pr-px">
+      <div className="flex w-[604.8px] items-center justify-center self-stretch border-r border-white/5 pr-px">
         <div className="relative h-[836px] max-h-[850px] w-[539.81px] overflow-clip bg-[#121212]">
           <img
             src="/landing/flow-connectors.svg"
@@ -106,7 +106,7 @@ export function FlowSection() {
         </div>
       </div>
 
-      <div className="flex min-w-px flex-1 items-center justify-center self-stretch px-[80px] py-[40px]">
+      <div className="flex w-[604.8px] items-center justify-center self-stretch px-[80px] py-[40px]">
         <div
           className="relative flex h-[756px] max-h-[800px] w-[380.81px] flex-col items-center justify-center overflow-clip rounded-[24px] border border-white/5 bg-[#121212] p-px shadow-[0px_25px_50px_-12px_rgba(0,0,0,0.25)]"
           style={{

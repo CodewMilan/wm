@@ -23,8 +23,8 @@ export function VideoSection() {
               <div className="pointer-events-none absolute inset-x-0 top-0 h-[200px] bg-gradient-to-b from-black/70 to-transparent" />
 
               <div className="absolute inset-x-0 top-0 flex items-start justify-between p-[12px]">
-                <div className="flex w-[207.6px] flex-col items-center gap-[4px]">
-                  <p className="font-inter w-full text-[23.3px] leading-[27.84px] font-bold tracking-[-0.2px] text-[#cecfd2]">
+                <div className="flex w-max flex-col items-center gap-[4px]">
+                  <p className="font-inter w-full text-[23.3px] leading-[27.84px] font-bold tracking-[-0.2px] whitespace-nowrap text-[#cecfd2]">
                     Introducing Worldscore
                   </p>
                   <div className="flex w-full items-center gap-[4px]">

@@ -24,19 +24,19 @@ export function Hero() {
         </h1>
 
         <div className="flex items-center justify-center gap-[16px]">
-          <span className="text-[34.3px] leading-[40px] tracking-[2.1437px] text-[#99a1af]">
-            in
+          <span className="text-[34.3px] leading-[40px] tracking-[2.1437px] whitespace-nowrap text-[#99a1af]">
+            powered by
           </span>
           <div className="flex items-center justify-center gap-[12px] rounded-[16px] border border-white/10 bg-white/10 px-[25px] py-[13px] backdrop-blur-[6px]">
-            <span className="relative block size-[40px] overflow-hidden">
+            <span className="relative block size-[40px] overflow-hidden rounded-[8px]">
               <img
-                src="/landing/slack-logo.png"
+                src="/landing/reactor-logo.png"
                 alt=""
                 className="absolute top-0 left-0 size-full max-w-none"
               />
             </span>
             <span className="text-[35.2px] leading-[40px] tracking-[2.2px] whitespace-nowrap text-white">
-              Slack
+              Reactor
             </span>
           </div>
         </div>
