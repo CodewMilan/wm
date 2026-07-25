@@ -22,6 +22,8 @@ interface WorldscoreState {
   error: string | null;
 
   trackName: string;
+  /** MIDI takes a different route in — it has to be synthesised before it plays. */
+  sourceKind: "audio" | "midi";
   audioUrl: string | null;
   analysis: AudioAnalysis | null;
 
@@ -51,7 +53,9 @@ interface WorldscoreState {
   setPhase: (phase: Phase) => void;
   setMode: (mode: SessionMode) => void;
   setError: (error: string | null) => void;
-  startAnalysis: (name: string, url: string) => void;
+  /** `url` is null for MIDI, which has no audio until it has been synthesised. */
+  startAnalysis: (name: string, url: string | null, kind?: "audio" | "midi") => void;
+  setAudioUrl: (url: string) => void;
   setAnalysis: (analysis: AudioAnalysis) => void;
   setDirections: (
     directions: ConceptDirection[],
@@ -72,6 +76,7 @@ function blank() {
   return {
     error: null,
     trackName: "",
+    sourceKind: "audio" as const,
     audioUrl: null,
     analysis: null,
     directions: [] as ConceptDirection[],
@@ -100,8 +105,14 @@ export const useWorldscore = create<WorldscoreState>((set, get) => ({
   setMode: (mode) => set({ mode }),
   setError: (error) => set({ error }),
 
-  startAnalysis: (trackName, audioUrl) =>
-    set({ phase: "analyzing", trackName, audioUrl, error: null }),
+  startAnalysis: (trackName, audioUrl, sourceKind = "audio") =>
+    set({ phase: "analyzing", trackName, audioUrl, sourceKind, error: null }),
+
+  setAudioUrl: (url) => {
+    const previous = get().audioUrl;
+    if (previous && previous !== url) URL.revokeObjectURL(previous);
+    set({ audioUrl: url });
+  },
 
   setAnalysis: (analysis) => set({ analysis }),
 

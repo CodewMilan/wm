@@ -13,22 +13,36 @@ const STAGES = [
   "Composing world directions",
 ];
 
+// MIDI has to be rendered to audio before any of it can be measured, and that
+// render is the slowest step, so the first stage names it rather than lying.
+const MIDI_STAGES = [
+  "Synthesising the score",
+  "Reading key and harmony",
+  "Mapping energy and structure",
+  "Composing world directions",
+];
+
 export function Analyzing() {
   const trackName = useWorldscore((s) => s.trackName);
   const analysis = useWorldscore((s) => s.analysis);
+  const sourceKind = useWorldscore((s) => s.sourceKind);
   const [stage, setStage] = useState(0);
+
+  const stages = sourceKind === "midi" ? MIDI_STAGES : STAGES;
 
   useEffect(() => {
     if (analysis) {
       setStage(3);
       return;
     }
+    // Synthesis is slower than decoding, so the steps shouldn't race ahead of it.
+    const scale = sourceKind === "midi" ? 2.5 : 1;
     const timers = [
-      setTimeout(() => setStage(1), 500),
-      setTimeout(() => setStage(2), 1400),
+      setTimeout(() => setStage(1), 500 * scale),
+      setTimeout(() => setStage(2), 1400 * scale),
     ];
     return () => timers.forEach(clearTimeout);
-  }, [analysis]);
+  }, [analysis, sourceKind]);
 
   return (
     <div className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6">
@@ -50,7 +64,7 @@ export function Analyzing() {
       </div>
 
       <ul className="mt-12 w-full max-w-sm space-y-2.5">
-        {STAGES.map((label, i) => (
+        {stages.map((label, i) => (
           <li
             key={label}
             className={`flex items-center gap-3 font-mono text-xs transition-colors ${

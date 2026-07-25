@@ -1,5 +1,5 @@
 import { analyzePcm } from "./analyze";
-import type { AudioAnalysis } from "./types";
+import type { AnalysisOverride, AudioAnalysis } from "./types";
 
 /** Analysis runs at this rate; decimating from 44.1k keeps the STFT cheap. */
 const TARGET_RATE = 22_050;
@@ -30,6 +30,19 @@ function toMonoAtTargetRate(buffer: AudioBuffer): Float32Array {
 }
 
 /**
+ * Analyse already-decoded audio. Split out from `decodeAndAnalyze` because
+ * synthesised MIDI arrives as an AudioBuffer that never went near a container
+ * format, and it needs the same treatment from here on.
+ */
+export async function analyzeAudioBuffer(
+  buffer: AudioBuffer,
+  override?: AnalysisOverride,
+): Promise<AudioAnalysis> {
+  const pcm = toMonoAtTargetRate(buffer);
+  return analyzeInWorker(pcm, override).catch(() => analyzePcm(pcm, TARGET_RATE, override));
+}
+
+/**
  * Decode on the main thread (AudioContext is not reliably available in workers)
  * then hand the PCM to a worker for the heavy STFT so the UI keeps animating.
  * Falls back to analysing inline if the worker can't be constructed.
@@ -39,16 +52,28 @@ export async function decodeAndAnalyze(
 ): Promise<{ analysis: AudioAnalysis; buffer: AudioBuffer }> {
   const bytes = file instanceof ArrayBuffer ? file : await file.arrayBuffer();
   const context = new AudioContext();
-  const buffer = await context.decodeAudioData(bytes.slice(0));
-  void context.close();
 
-  const pcm = toMonoAtTargetRate(buffer);
+  let buffer: AudioBuffer;
+  try {
+    buffer = await context.decodeAudioData(bytes.slice(0));
+  } catch {
+    // The browser's own message here is a bare "Unable to decode audio data",
+    // which tells nobody anything about which of the many causes it hit.
+    throw new Error(
+      "This browser couldn't decode that audio. Try exporting it as WAV or MP3.",
+    );
+  } finally {
+    void context.close();
+  }
 
-  const analysis = await analyzeInWorker(pcm).catch(() => analyzePcm(pcm, TARGET_RATE));
+  const analysis = await analyzeAudioBuffer(buffer);
   return { analysis, buffer };
 }
 
-function analyzeInWorker(pcm: Float32Array): Promise<AudioAnalysis> {
+function analyzeInWorker(
+  pcm: Float32Array,
+  override?: AnalysisOverride,
+): Promise<AudioAnalysis> {
   return new Promise((resolve, reject) => {
     let worker: Worker;
     try {
@@ -71,6 +96,9 @@ function analyzeInWorker(pcm: Float32Array): Promise<AudioAnalysis> {
     };
 
     const copy = pcm.slice();
-    worker.postMessage({ pcm: copy, sampleRate: TARGET_RATE }, [copy.buffer]);
+    const transfer: Transferable[] = [copy.buffer];
+    // The override arrays are small next to the PCM, so they're copied rather
+    // than transferred — the caller may still want them.
+    worker.postMessage({ pcm: copy, sampleRate: TARGET_RATE, override }, transfer);
   });
 }

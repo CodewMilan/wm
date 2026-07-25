@@ -8,10 +8,16 @@ import {
   normalise,
   smooth,
 } from "./dsp";
-import type { AudioAnalysis, KeyChange, Section, SectionRole } from "./types";
+import type {
+  AnalysisOverride,
+  AudioAnalysis,
+  KeyChange,
+  Section,
+  SectionRole,
+} from "./types";
 
 /** Texture frames per second — the resolution structure detection works at. */
-const TEXTURE_HZ = 4;
+export const TEXTURE_HZ = 4;
 /** Half-width of the novelty comparison window, in texture frames. */
 const NOVELTY_WINDOW = 20;
 /** Minimum musical distance between two section boundaries. */
@@ -238,11 +244,35 @@ function deriveMoodTags(
   return tags;
 }
 
-export function analyzePcm(pcm: Float32Array, sampleRate: number): AudioAnalysis {
+/**
+ * Both grids start at zero and run at `TEXTURE_HZ`, so conforming is a clamp
+ * rather than a resample. Frames past the end repeat the last known harmony,
+ * which is what a reverb tail is actually doing anyway.
+ */
+function conform(src: Float32Array, count: number, stride: number): Float32Array {
+  const out = new Float32Array(count * stride);
+  const srcCount = Math.floor(src.length / stride);
+  if (srcCount === 0) return out;
+
+  for (let t = 0; t < count; t++) {
+    const s = Math.min(srcCount - 1, t);
+    for (let k = 0; k < stride; k++) out[t * stride + k] = src[s * stride + k];
+  }
+  return out;
+}
+
+export function analyzePcm(
+  pcm: Float32Array,
+  sampleRate: number,
+  override?: AnalysisOverride,
+): AudioAnalysis {
   const frames = computeFrames(pcm, sampleRate);
   const durationMs = (pcm.length / sampleRate) * 1000;
 
-  const tempo = estimateTempo(frames.flux, frames.fps);
+  const estimated = estimateTempo(frames.flux, frames.fps);
+  const tempo = override
+    ? { bpm: override.bpm, phaseFrames: (override.beatPhaseMs / 1000) * frames.fps }
+    : estimated;
 
   // Centroid is in Hz and spans orders of magnitude, so a few noisy-hat frames
   // would otherwise squash the whole track toward zero. Compress it first.
@@ -256,7 +286,6 @@ export function analyzePcm(pcm: Float32Array, sampleRate: number): AudioAnalysis
   const lowN = normalise(smooth(frames.low, 2));
   const midN = normalise(smooth(frames.mid, 2));
   const highN = normalise(smooth(frames.high, 2));
-  const pitchN = normalise(smooth(frames.pitch, 2));
 
   const textureCount = Math.max(1, Math.floor((durationMs / 1000) * TEXTURE_HZ));
   const tEnergy = toTexture(energyN, frames.fps, textureCount);
@@ -264,12 +293,21 @@ export function analyzePcm(pcm: Float32Array, sampleRate: number): AudioAnalysis
   const tLow = toTexture(lowN, frames.fps, textureCount);
   const tMid = toTexture(midN, frames.fps, textureCount);
   const tHigh = toTexture(highN, frames.fps, textureCount);
-  const tRegister = toTexture(pitchN, frames.fps, textureCount);
+
+  // Absolute pitch in MIDI numbers, before normalising: a genuinely bass-heavy
+  // track should read heavy overall, not merely heavy relative to its own
+  // brightest moment.
+  const pitchMidi = override
+    ? conform(override.pitch, textureCount, 1)
+    : toTexture(frames.pitch, frames.fps, textureCount);
+  const tRegister = normalise(smooth(pitchMidi, 2));
 
   // Harmony is read over a sliding window rather than per texture frame, so a
   // passing chord can't yank the season around. Both curves come off the same
   // averaged profile, which keeps them consistent with each other.
-  const tChroma = chromaToTexture(frames.chroma, frames.fps, frames.count, textureCount);
+  const tChroma = override
+    ? conform(override.chroma, textureCount, 12)
+    : chromaToTexture(frames.chroma, frames.fps, frames.count, textureCount);
   const tMajorness = new Float32Array(textureCount);
   const tTension = new Float32Array(textureCount);
   for (let t = 0; t < textureCount; t++) {
@@ -325,17 +363,17 @@ export function analyzePcm(pcm: Float32Array, sampleRate: number): AudioAnalysis
     previous = local;
   }
 
-  // Absolute pitch height, averaged over frames that actually had pitch in
-  // them. Silence would otherwise drag a sparse track's register to the floor.
+  // Averaged only over frames that actually had pitch in them, or the rests in
+  // a sparse arrangement would drag its register to the floor.
   let pitchSum = 0;
-  let pitchN2 = 0;
-  for (let f = 0; f < frames.count; f++) {
-    if (frames.pitch[f] > 0) {
-      pitchSum += frames.pitch[f];
-      pitchN2++;
+  let sounding = 0;
+  for (let t = 0; t < textureCount; t++) {
+    if (pitchMidi[t] > 0) {
+      pitchSum += pitchMidi[t];
+      sounding++;
     }
   }
-  const meanPitchMidi = pitchN2 > 0 ? pitchSum / pitchN2 : 0;
+  const meanPitchMidi = sounding > 0 ? pitchSum / sounding : 0;
   const meanTension = mean(tTension);
 
   return {

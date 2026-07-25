@@ -1,6 +1,9 @@
 "use client";
 
+import type { AudioAnalysis } from "./audio/types";
 import { decodeAndAnalyze } from "./audio/decode";
+import { loadMidi } from "./midi/load";
+import { isMidiFile } from "./midi/parse";
 import { useWorldscore } from "./store";
 import type { ConceptDirection } from "./world/spec";
 
@@ -15,13 +18,32 @@ export async function runDemoTrack(): Promise<void> {
   await runPipeline(new File([blob], "Synthetic Test Track.wav", { type: "audio/wav" }));
 }
 
+/**
+ * A MIDI file is a score with no sound in it, so there is nothing to play and
+ * nothing to measure until we render it. Everything downstream then behaves
+ * exactly as it does for an upload, except the harmony is exact rather than
+ * estimated off a spectrum.
+ */
+async function prepare(file: File): Promise<AudioAnalysis> {
+  if (!isMidiFile(file)) return (await decodeAndAnalyze(file)).analysis;
+
+  const { analysis, audioUrl } = await loadMidi(file);
+  useWorldscore.getState().setAudioUrl(audioUrl);
+  return analysis;
+}
+
 export async function runPipeline(file: File): Promise<void> {
   const store = useWorldscore.getState();
-  const url = URL.createObjectURL(file);
-  store.startAnalysis(file.name.replace(/\.[^.]+$/, ""), url);
+  const midi = isMidiFile(file);
+  // MIDI gets its URL later, once there is audio to point at.
+  store.startAnalysis(
+    file.name.replace(/\.[^.]+$/, ""),
+    midi ? null : URL.createObjectURL(file),
+    midi ? "midi" : "audio",
+  );
 
   try {
-    const { analysis } = await decodeAndAnalyze(file);
+    const analysis = await prepare(file);
     useWorldscore.getState().setAnalysis(analysis);
 
     const res = await fetch("/api/concepts", {

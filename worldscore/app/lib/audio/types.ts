@@ -89,7 +89,24 @@ export interface AudioAnalysis {
   meanTension: number;
 }
 
+/**
+ * Ground truth from a source that knows better than our estimator does. Only
+ * MIDI supplies this today: it carries the exact notes, so inferring pitch and
+ * harmony from the rendered spectrum would throw away information we already
+ * hold. Energy, structure and timbre are still read from the audio, because a
+ * score says nothing about how it was performed.
+ */
+export interface AnalysisOverride {
+  /** Interleaved 12-bin chroma, one group per texture frame. */
+  chroma: Float32Array;
+  /** Mean sounding MIDI pitch per texture frame, 0 where nothing sounds. */
+  pitch: Float32Array;
+  bpm: number;
+  beatPhaseMs: number;
+}
+
 export interface AnalyzeRequest {
   pcm: Float32Array;
   sampleRate: number;
+  override?: AnalysisOverride;
 }
