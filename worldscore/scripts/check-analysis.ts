@@ -51,12 +51,31 @@ console.log(`  tempo       ${analysis.bpm} BPM`);
 console.log(`  energy      ${analysis.meanEnergy.toFixed(2)}`);
 console.log(`  brightness  ${analysis.meanBrightness.toFixed(2)}`);
 console.log(`  dynamics    ${analysis.dynamicRange.toFixed(2)}`);
+console.log(
+  `  key         ${analysis.key.tonicName} ${analysis.key.mode} ` +
+    `(confidence ${analysis.key.confidence.toFixed(2)}, majorness ${analysis.key.majorness.toFixed(2)})`,
+);
+console.log(
+  `  register    MIDI ${analysis.meanPitchMidi.toFixed(1)}  tension ${analysis.meanTension.toFixed(2)}`,
+);
 console.log(`  mood        ${analysis.moodTags.join(", ")}`);
+
+if (analysis.keyChanges.length) {
+  console.log(`\n  key changes (${analysis.keyChanges.length}):`);
+  for (const k of analysis.keyChanges) {
+    console.log(
+      `    ${(k.atMs / 1000).toFixed(1).padStart(6)}s  ${k.from} → ${k.to} ` +
+        `(${k.semitones > 0 ? "+" : ""}${k.semitones} semitones)`,
+    );
+  }
+}
+
 console.log(`\n  sections (${analysis.sections.length}):`);
 for (const s of analysis.sections) {
   console.log(
     `    ${(s.startMs / 1000).toFixed(1).padStart(6)}s → ${(s.endMs / 1000).toFixed(1).padStart(6)}s  ` +
-      `${s.role.padEnd(10)} energy ${s.energy.toFixed(2)}  bright ${s.brightness.toFixed(2)}` +
+      `${s.role.padEnd(10)} energy ${s.energy.toFixed(2)}  bright ${s.brightness.toFixed(2)}  ` +
+      `reg ${s.register.toFixed(2)}  maj ${s.majorness.toFixed(2)}  tens ${s.tension.toFixed(2)}` +
       `${s.isImpact ? "  IMPACT" : ""}`,
   );
 }

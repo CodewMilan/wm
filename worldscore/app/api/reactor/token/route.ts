@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 
-// The model this app drives. The minted JWT is scoped to it: the token
-// can create sessions for this model only, and can act only on the
+// The models this app drives. The minted JWT is scoped to them: the token
+// can create sessions for these models only, and can act only on the
 // sessions it created — nothing else on the account.
-const MODEL_NAME = "reactor/longlive-v2";
+//
+// Watch mode runs on LongLive-2.0, Explore mode on LingBot World 2. One token
+// covers both so switching modes doesn't need a fresh mint.
+const MODEL_NAMES = ["reactor/longlive-v2", "reactor/lingbot-world-2"];
 
 // Session budget for one token — how many sessions it may ever create
 // (closed sessions still count). The browser caches the token for its
@@ -63,7 +66,7 @@ export async function GET() {
       authorization_details: [
         {
           type: "session",
-          resources: { models: { match: [MODEL_NAME] } },
+          resources: { models: { match: MODEL_NAMES } },
           constraints: { max_sessions: MAX_SESSIONS },
         },
       ],

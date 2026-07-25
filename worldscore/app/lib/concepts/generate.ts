@@ -48,7 +48,10 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-type WorldTextField = Exclude<keyof WorldSpec, "motifs">;
+// Weather and season are excluded deliberately: the climate engine owns them,
+// so letting the model author them too would just give us two sources of truth
+// arguing inside one paragraph.
+type WorldTextField = Exclude<keyof WorldSpec, "motifs" | "weather" | "season">;
 
 const WORLD_FIELDS: WorldTextField[] = [
   "subject",

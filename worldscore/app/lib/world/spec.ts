@@ -13,6 +13,14 @@ export interface WorldSpec {
   /** Where we are. */
   setting: string;
   timeOfDay: string;
+  /**
+   * Weather and season are owned by the climate engine, never by the LLM —
+   * they're the channel the music steers. Optional so the archetype library
+   * and the model's own output stay valid without them; the score fills them
+   * in before anything reaches the model.
+   */
+  weather?: string;
+  season?: string;
   /** Lighting described by its effect on the scene, not a colour temperature. */
   lighting: string;
   lens: string;
@@ -43,15 +51,21 @@ export interface ConceptDirection {
  * Order follows the model's documented prompt anatomy: subject, action,
  * setting, light, lens and camera, palette and texture, render cue.
  */
-export function composePrompt(spec: WorldSpec): string {
+export function composePrompt(spec: WorldSpec, options: { camera?: boolean } = {}): string {
+  // Explore mode drives the camera through real control inputs, so leaving
+  // camera language in the prompt there would fight the actual pose. Watch
+  // mode has no such controls and needs it.
+  const withCamera = options.camera ?? true;
+
   const parts = [
     `${spec.subject} ${spec.action}`,
-    `${spec.setting}, ${spec.timeOfDay}`,
+    [spec.setting, spec.season, spec.timeOfDay].filter(Boolean).join(", "),
+    spec.weather,
     spec.lighting,
-    `${spec.lens}, ${spec.cameraMove}`,
+    withCamera ? `${spec.lens}, ${spec.cameraMove}` : spec.lens,
     `${spec.palette}, ${spec.texture}`,
     spec.renderCue,
-  ];
+  ].filter((p): p is string => Boolean(p));
   return parts
     .map((p) => p.trim().replace(/[.,]$/, ""))
     .filter(Boolean)

@@ -1,4 +1,12 @@
 import type { AudioAnalysis, Section, SectionRole } from "../audio/types";
+import {
+  climateForSection,
+  describeWeather,
+  seasonPhrase,
+  weatherPhrase,
+  SEASON_DWELL_MS,
+  type Climate,
+} from "./climate";
 import { composePrompt, type ConceptDirection, type WorldSpec } from "./spec";
 
 /** LongLive-2.0 emits 29-frame chunks at 24fps. */
@@ -21,6 +29,8 @@ export interface Cue {
   reason: string;
   source: CueSource;
   sectionRole?: SectionRole;
+  /** The weather and season this cue puts the world into. */
+  climate?: Climate;
 }
 
 export interface Score {
@@ -103,7 +113,12 @@ function lightingForSection(section: Section, base: WorldSpec): string {
  * Every cue stays recognisably the same world — that's what makes the result
  * feel composed rather than a slideshow of unrelated prompts.
  */
-function specForSection(section: Section, base: WorldSpec, bpm: number): WorldSpec {
+function specForSection(
+  section: Section,
+  base: WorldSpec,
+  bpm: number,
+  climate: Climate,
+): WorldSpec {
   const motif = base.motifs[Math.floor(section.startMs / 1000) % Math.max(1, base.motifs.length)];
   const wantsMotif = section.role === "bridge" || section.role === "breakdown";
 
@@ -111,6 +126,8 @@ function specForSection(section: Section, base: WorldSpec, bpm: number): WorldSp
     ...base,
     action: section.isImpact ? `${base.action}, breaking into sudden violent motion` : base.action,
     setting: wantsMotif && motif ? `${base.setting}, ${motif} appearing again` : base.setting,
+    weather: weatherPhrase(climate),
+    season: seasonPhrase(climate.season),
     lighting: lightingForSection(section, base),
     lens: lensForSection(section, base),
     cameraMove: cameraForSection(section, bpm),
@@ -156,13 +173,25 @@ export function compileScore(analysis: AudioAnalysis, direction: ConceptDirectio
   };
 
   const opening = analysis.sections[0];
+  const openingClimate = opening
+    ? climateForSection(analysis, opening)
+    : { season: "autumn" as const, weather: "overcast" as const, intensity: 0.4, wind: 0.3 };
+
+  // A soft shot keeps the model's memory of the scene it is already in, so
+  // asking for snow over a remembered summer field gets you a muddy
+  // half-change. Seasons therefore only move on hard cuts. Weather is shallower
+  // and is allowed to shift on a soft shot.
+  let season = openingClimate.season;
+  let lastSeasonChangeMs = 0;
+
   push({
     atMs: 0,
     kind: "cut",
-    spec: opening ? specForSection(opening, base, analysis.bpm) : base,
+    spec: opening ? specForSection(opening, base, analysis.bpm, openingClimate) : base,
     reason: "opening shot — establishing the world",
     source: "opening",
     sectionRole: opening?.role,
+    climate: openingClimate,
   });
 
   for (let i = 1; i < analysis.sections.length; i++) {
@@ -176,15 +205,28 @@ export function compileScore(analysis: AudioAnalysis, direction: ConceptDirectio
     const kind: CueKind =
       forcedByBudget || CUT_ROLES.includes(section.role) || section.isImpact ? "cut" : "shot";
 
+    const wanted = climateForSection(analysis, section);
+    const seasonMayChange =
+      kind === "cut" && wanted.season !== season && at - lastSeasonChangeMs >= SEASON_DWELL_MS;
+    if (seasonMayChange) {
+      season = wanted.season;
+      lastSeasonChangeMs = at;
+    }
+    const climate: Climate = { ...wanted, season };
+
+    const budgetDriven = forcedByBudget && !CUT_ROLES.includes(section.role);
     push({
       atMs: at,
       kind,
-      spec: specForSection(section, base, analysis.bpm),
-      reason: forcedByBudget && !CUT_ROLES.includes(section.role)
-        ? `${section.role} — cut to extend the scene budget`
-        : reasonFor(section, kind),
-      source: forcedByBudget && !CUT_ROLES.includes(section.role) ? "budget" : "structure",
+      spec: specForSection(section, base, analysis.bpm, climate),
+      reason: seasonMayChange
+        ? `${section.role} — ${season} moves in on the cut`
+        : budgetDriven
+          ? `${section.role} — cut to extend the scene budget`
+          : `${reasonFor(section, kind)}, ${describeWeather(climate)}`,
+      source: budgetDriven ? "budget" : "structure",
       sectionRole: section.role,
+      climate,
     });
 
     // A single section can outlast the budget on its own; break it up.
@@ -196,10 +238,11 @@ export function compileScore(analysis: AudioAnalysis, direction: ConceptDirectio
       push({
         atMs: cursor,
         kind: "cut",
-        spec: specForSection(section, base, analysis.bpm),
+        spec: specForSection(section, base, analysis.bpm, climate),
         reason: `${section.role} — cut to extend the scene budget`,
         source: "budget",
         sectionRole: section.role,
+        climate,
       });
     }
   }

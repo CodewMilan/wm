@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@reactor-models/lingbot-world-2':
+        specifier: ^0.3.3
+        version: 0.3.3(hls.js@1.6.16)(react@19.2.7)(zustand@5.0.14(@types/react@19.2.16)(react@19.2.7))
       '@reactor-models/longlive-v2':
         specifier: ^3.0.0
         version: 3.0.4(hls.js@1.6.16)(react@19.2.7)(zustand@5.0.14(@types/react@19.2.16)(react@19.2.7))
@@ -264,6 +267,11 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [win32]
+
+  '@reactor-models/lingbot-world-2@0.3.3':
+    resolution: {integrity: sha512-FPYEG4gHD7RMQw4vI4xsuFwSLQ/77LkEiU9fKkG3thVC/EySmxBTykH4WGIvlgrf+I+UFpX5+8xF9o+8S3BFyg==}
+    peerDependencies:
+      react: '>=18'
 
   '@reactor-models/longlive-v2@3.0.4':
     resolution: {integrity: sha512-z+Ovc5vPzLVgfTlc3oXKOxa8Yvyd1zlNi4ixRpCN52W9of7i1xoQ9P0DM8V+b+J7O1CHb+AXtshNBc6wQNdDhQ==}
@@ -777,6 +785,15 @@ snapshots:
 
   '@next/swc-win32-x64-msvc@15.5.19':
     optional: true
+
+  '@reactor-models/lingbot-world-2@0.3.3(hls.js@1.6.16)(react@19.2.7)(zustand@5.0.14(@types/react@19.2.16)(react@19.2.7))':
+    dependencies:
+      '@reactor-team/js-sdk': 2.12.0(hls.js@1.6.16)(react@19.2.7)(zustand@5.0.14(@types/react@19.2.16)(react@19.2.7))
+      react: 19.2.7
+    transitivePeerDependencies:
+      - hls.js
+      - supports-color
+      - zustand
 
   '@reactor-models/longlive-v2@3.0.4(hls.js@1.6.16)(react@19.2.7)(zustand@5.0.14(@types/react@19.2.16)(react@19.2.7))':
     dependencies:

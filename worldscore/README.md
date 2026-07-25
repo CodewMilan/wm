@@ -30,6 +30,8 @@ into cuts and shots, and fires them on the beat.
 
 ## How it works
 
+Diagrams and the reasoning behind each layer live in [ARCHITECTURE.md](./ARCHITECTURE.md).
+
 ```
 audio file
   → decode + STFT in the browser         (never uploaded)
