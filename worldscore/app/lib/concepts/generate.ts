@@ -48,7 +48,9 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-const WORLD_FIELDS: (keyof WorldSpec)[] = [
+type WorldTextField = Exclude<keyof WorldSpec, "motifs">;
+
+const WORLD_FIELDS: WorldTextField[] = [
   "subject",
   "action",
   "setting",
