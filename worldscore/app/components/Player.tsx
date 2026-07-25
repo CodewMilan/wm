@@ -7,11 +7,12 @@ import {
   useLongliveV2State,
   useLongliveV2CommandError,
   useLongliveV2ShotSet,
+  useLongliveV2GenerationStarted,
 } from "@reactor-models/longlive-v2";
 import type { LongliveV2StateMessage } from "@reactor-models/longlive-v2";
 import { useWorldscore } from "../lib/store";
 import { CHUNK_MS, SCENE_MAX_CHUNKS, type Cue } from "../lib/world/score";
-import { confirmCommand } from "../lib/world/handshake";
+import { waitForState } from "../lib/world/handshake";
 import { applyModifiers, composePrompt, MODIFIERS } from "../lib/world/spec";
 import { ScoreStrip } from "./ScoreStrip";
 
@@ -23,8 +24,16 @@ const BUDGET_PROMOTE_AT = SCENE_MAX_CHUNKS - 6;
 const BUDGET_FORCE_AT = SCENE_MAX_CHUNKS - 3;
 /** Absolute ceiling on a session, so a walked-away browser can't burn credits. */
 const MAX_SESSION_MS = 6 * 60 * 1000;
-/** How long to wait for the model to confirm the opening shot before `start`. */
-const HANDSHAKE_MS = 20_000;
+/**
+ * Grace given to the opening shot to be acknowledged before `start` goes out.
+ * Short on purpose: it buys ordering slack against a command that is sent
+ * without an ack, and the cost of it elapsing is only that we start optimistically.
+ */
+const SHOT_SETTLE_MS = 2_500;
+/** How long to give `start` to actually produce frames before re-seeding. */
+const START_CONFIRM_MS = 12_000;
+/** Total tries at the opening shot before giving up and showing the error. */
+const OPENER_ATTEMPTS = 3;
 
 export function Player() {
   const { status, connect, disconnect, setShot, sceneCut, start } = useLongliveV2();
@@ -56,8 +65,13 @@ export function Player() {
   // signal that matters and the snapshot is only a fallback.
   const shotAckedRef = useRef(false);
 
+  const generatingRef = useRef(false);
+
   useLongliveV2ShotSet(() => {
     shotAckedRef.current = true;
+  });
+  useLongliveV2GenerationStarted(() => {
+    generatingRef.current = true;
   });
 
   useLongliveV2State((msg) => {
@@ -101,21 +115,49 @@ export function Player() {
 
     openerSentRef.current = true;
     void (async () => {
-      try {
-        // `start` is rejected unless the model already holds an opening shot,
-        // and `setShot` resolves when the bytes are sent rather than when the
-        // model has taken them — so wait for it to say so.
-        await confirmCommand(
-          () => setShot({ prompt: opener.prompt }),
-          () => shotAckedRef.current || Boolean(snapshotRef.current?.has_prompt),
-          (accepted) => accepted,
-          { what: "the opening shot", timeoutMs: HANDSHAKE_MS },
-        );
+      /**
+       * `status === "ready"` means the transport is up, not that the model is
+       * listening — a shot sent into that window is dropped without any
+       * `command_error`, and the `start` that follows is then rejected for
+       * having no prompt. Nothing in the protocol reliably marks the moment the
+       * worker starts accepting commands, so rather than trust one signal we
+       * send the pair and check whether generation actually began.
+       */
+      for (let attempt = 1; attempt <= OPENER_ATTEMPTS; attempt++) {
+        try {
+          shotAckedRef.current = false;
+          await setShot({ prompt: opener.prompt });
 
-        await start();
-        useWorldscore.getState().markFired(opener);
-      } catch (error) {
-        setCommandError((existing) => existing ?? (error as Error).message);
+          // Give the acknowledgement a moment if it is coming, but never block
+          // on it: LongLive often starts generating without ever emitting one.
+          await waitForState(
+            () => shotAckedRef.current || Boolean(snapshotRef.current?.has_prompt),
+            (accepted) => accepted,
+            { what: "the opening shot", timeoutMs: SHOT_SETTLE_MS },
+          ).catch(() => undefined);
+
+          await start();
+
+          // The only proof that matters. If it never comes, the shot was
+          // swallowed and the whole pair is worth sending again.
+          await waitForState(
+            () => generatingRef.current || Boolean(snapshotRef.current?.started),
+            (generating) => generating,
+            { what: "generation starting", timeoutMs: START_CONFIRM_MS },
+          );
+
+          useWorldscore.getState().markFired(opener);
+          return;
+        } catch (error) {
+          if (attempt === OPENER_ATTEMPTS) {
+            setCommandError((existing) => existing ?? (error as Error).message);
+            return;
+          }
+          // A rejected `start` leaves the session idle rather than broken, so
+          // the next attempt can simply re-seed the shot and try again.
+          console.warn(`[longlive] opener attempt ${attempt} failed, retrying`, error);
+          setCommandError(null);
+        }
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

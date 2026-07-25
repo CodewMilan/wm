@@ -10,7 +10,11 @@ const url = process.argv[2] ?? "http://localhost:3100";
 /** "explore" drives LingBot with a seed image; "watch" drives LongLive. */
 const mode = process.argv[3] === "watch" ? "watch" : "explore";
 
-const browser = await chromium.launch();
+// Headless Chromium blocks autoplay by default, which would make the audio
+// look broken here even when it is fine in a real browser after a click.
+const browser = await chromium.launch({
+  args: ["--autoplay-policy=no-user-gesture-required"],
+});
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
 const page = await ctx.newPage();
 
@@ -68,6 +72,7 @@ try {
   const deadline = Date.now() + 180_000;
   let started = false;
   let lastStatus = "";
+  let audio = null;
 
   while (Date.now() < deadline) {
     // The header carries the connection status, and watching it change is how
@@ -105,6 +110,16 @@ try {
     if (video && video.w > 0) {
       started = true;
       console.log(`  video streaming: ${video.w}x${video.h} at t=${video.t.toFixed(1)}s`);
+
+      // The world moving is only half of it — the track has to be running with
+      // it, since every cut is timed against the audio element's clock.
+      await page.waitForTimeout(4000);
+      audio = await page.evaluate(() => {
+        const a = document.querySelector("audio");
+        return a
+          ? { paused: a.paused, t: a.currentTime, duration: a.duration, src: !!a.src }
+          : null;
+      });
       break;
     }
     if (overlay === 0) break;
@@ -117,6 +132,11 @@ try {
   const noPromptSet = commandErrors.some((e) => /No prompt set|no shot has been set/i.test(e));
   check("no 'No prompt set' rejection", !noPromptSet, commandErrors.join(" | ") || "clean");
   check("the model started generating frames", started, started ? "frames arriving" : "never started");
+  check(
+    "the track is playing alongside it",
+    Boolean(audio && !audio.paused && audio.t > 0),
+    audio ? `paused=${audio.paused} t=${audio.t.toFixed(1)}s of ${audio.duration?.toFixed(0)}s` : "no audio element",
+  );
 
   const shownError = await page.locator(".text-red-400").first().textContent().catch(() => null);
   check("no error shown in the UI", !shownError, shownError ?? "none");
